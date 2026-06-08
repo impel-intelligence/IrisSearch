@@ -1,0 +1,51 @@
+{
+  "originHash" : "7ad60ac75266dbd9e4cf47bb59ce313cd20863631c556f435412778559004edd",
+  "pins" : [
+    {
+      "identity" : "faissmobile",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jkrukowski/FaissMobile",
+      "state" : {
+        "revision" : "9d5b9925305eea9398cc92ce4a8e51c8a4b043af",
+        "version" : "0.0.1"
+      }
+    },
+    {
+      "identity" : "grdb.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/groue/GRDB.swift",
+      "state" : {
+        "revision" : "9ed8c8457e00ff9c7aedb3bf213f20a2cfdf509e",
+        "version" : "7.11.0"
+      }
+    },
+    {
+      "identity" : "swift-algorithms",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-algorithms",
+      "state" : {
+        "revision" : "87e50f483c54e6efd60e885f7f5aa946cee68023",
+        "version" : "1.2.1"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics.git",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
+      }
+    },
+    {
+      "identity" : "swiftfaiss",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/impel-intelligence/SwiftFaiss",
+      "state" : {
+        "revision" : "eb5072e4ab267203b99cadc447396f07712c8f41",
+        "version" : "0.2.0"
+      }
+    }
+  ],
+  "version" : 3
+}
