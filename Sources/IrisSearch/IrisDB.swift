@@ -18,35 +18,49 @@ import SwiftFaissC
 /// - Map File
 /// - Compressed long-term text storage
 
-final class IrisDocument: Codable, Sendable, FetchableRecord, PersistableRecord {
-    let id: UUID
+final class IrisDocument: Codable, Identifiable, Sendable, FetchableRecord, PersistableRecord {
+    static let databaseTableName: String = "documents"
+    
+    nonisolated(unsafe) var id: Int64 = 0
+    let uuid: UUID
     let content: String
     let embeddings: [[Float]]
     
-    init(id: UUID, content: String, embeddings: [[Float]]) {
-        self.id = id
+    init(uuid: UUID, content: String, embeddings: [[Float]]) {
+        self.uuid = uuid
         self.content = content
         self.embeddings = embeddings
+    }
+    
+    func didInsert(_ inserted: InsertionSuccess) {
+        id = inserted.rowID
     }
 }
 
 final class IrisDB {
+    private static let databaseExtension = "irisdb"
+    private static let indexExtension = "index"
+    
     private var embeddingProvider: EmbeddingProvider
     
     private var databaseURL: URL
     private var sqliteURL: URL {
-        return databaseURL.appending(path: "map.sqlite")
+        return databaseURL.appending(path: "map").appendingPathExtension("sqlite")
     }
     private var indexDirectory: URL {
         return databaseURL.appending(path: "indices")
     }
     
     init(databaseLocation: URL, databaseName: String = "main", embeddingProvider: EmbeddingProvider) throws {
-        databaseURL = databaseLocation.appending(path: "\(databaseName).idb")
+        databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
         self.embeddingProvider = embeddingProvider
         
         if !FileManager.default.fileExists(atPath: databaseLocation.path()) {
             try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
+        }
+        
+        if !FileManager.default.fileExists(atPath: indexDirectory.path()) {
+            try FileManager.default.createDirectory(at: indexDirectory, withIntermediateDirectories: true)
         }
         
         try initializeDB()
@@ -56,13 +70,14 @@ final class IrisDB {
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
         
         try dbQueue.write { db in
-            try db.create(table: "documents") { table in
-                table.primaryKey("id", .text)
+            try db.create(table: "documents", ifNotExists: true) { table in
+                table.autoIncrementedPrimaryKey("id")
+                table.column("uuid", .blob)
                 table.column("content", .text).notNull()
                 table.column("embeddings", .blob).notNull()
             }
             
-            try db.create(virtualTable: "documents_ft", using: FTS5()) { table in
+            try db.create(virtualTable: "documents_ft", ifNotExists: true, using: FTS5()) { table in
                 table.synchronize(withTable: "documents")
                 table.column("id")
                 table.column("content")
@@ -70,7 +85,8 @@ final class IrisDB {
         }
     }
     
-    func insertDocument(id: UUID, content: String, chunker: ContentChunker) async throws {
+    @discardableResult
+    public func insertDocument(id: UUID, content: String, chunker: ContentChunker) async throws -> IrisDocument {
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
         let contentChunks = chunker.chunk(content: content)
         
@@ -89,7 +105,7 @@ final class IrisDB {
         }
         
         // Create a document object
-        let document = IrisDocument(id: id, content: content, embeddings: embeddings)
+        let document = IrisDocument(uuid: id, content: content, embeddings: embeddings)
         
         // Insert into the document into the database
         try await dbQueue.write { db in
@@ -97,11 +113,53 @@ final class IrisDB {
         }
         
         try await refreshIndex(for: document)
+        try await refreshGlobalIndex()
+        
+        return document
+    }
+    
+    private func refreshGlobalIndex() async throws {
+        let indexURL = indexDirectory.appending(component: "global").appendingPathExtension(IrisDB.indexExtension)
+        
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        
+        let documents = try await dbQueue.read { db in
+            return try IrisDocument.fetchAll(db)
+        }
+        
+        // Create parallel arrays of embeddings and their corresponding document indices
+        var embeddings: [[Float]] = []
+        var ids: [Int] = []
+        
+        for document in documents {
+            // For each embedding in the document, add it with the document's rowID as its ID
+            for embedding in document.embeddings {
+                embeddings.append(embedding)
+                ids.append(Int(document.id))
+            }
+        }
+        
+        var index: IDMap
+        if FileManager.default.fileExists(atPath: indexURL.path()),
+           let flatIndex = try? IDMap.from(indexURL.path(percentEncoded: false)) {
+            index = flatIndex
+        } else {
+            let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
+            index = try IDMap(subIndex: coreIndex)
+        }
+        
+        // First train the index with the new data
+        try index.train(embeddings)
+        // Add the data to the index with their corresponding IDs
+        try index.add(embeddings, ids: ids)
+        // Save the global index
+        try index.saveToFile(indexURL.path())
     }
     
     private func refreshIndex(for document: IrisDocument) async throws {
-        let indexURL = indexDirectory.appending(component: document.id.uuidString)
+        let indexURL = indexDirectory.appending(component: document.uuid.uuidString).appendingPathExtension(IrisDB.indexExtension)
         
+        // Use a flat index for single document indices as we do not need anything faster.
         var index: FlatIndex
         if FileManager.default.fileExists(atPath: indexURL.path()),
            let flatIndex = try? FlatIndex.from(indexURL.path(percentEncoded: false)) {
@@ -110,13 +168,13 @@ final class IrisDB {
         
         index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
         
-//        try index.train(document.v)
-        try index.add(<#T##xs: [[Float]]##[[Float]]#>)
-
+        // First train the index with the new data
+        try index.train(document.embeddings)
+        // Add the data to the index
+        try index.add(document.embeddings)
+        
+        
+        try index.saveToFile(indexURL.path())
     }
-    
-//    private func refreshGlobalIndex {
-//        
-//    }
 }
 
