@@ -8,4 +8,3 @@
 protocol ContentChunker {
     func chunk(content: String) -> [String]
 }
-
