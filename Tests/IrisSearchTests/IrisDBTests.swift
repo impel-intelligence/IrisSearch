@@ -2,7 +2,7 @@
 //  IrisDBTests.swift
 //  IrisSearch
 //
-//  Created by Taylor Lineman on 6/8/26.
+// d by Taylor Lineman on 6/8/26.
 //
 
 import Testing
@@ -12,39 +12,50 @@ import SwiftFaiss
 import SwiftFaissC
 import GRDB
 
+class TestingDirectories {
+    let databaseName: String = "main"
+    let baseURL: URL
+    let bundleURL: URL
+    let sqliteURL: URL
+    let indexURL: URL
+    
+    init() {
+        baseURL = FileManager.default.temporaryDirectory.appending(path: "tmp-database-\(UUID())")
+        bundleURL = baseURL.appendingPathComponent("\(databaseName).irisdb")
+        sqliteURL = bundleURL.appending(path: "map.sqlite")
+        indexURL = bundleURL.appending(path: "indices")
+        print(baseURL)
+    }
+    
+    deinit {
+        try? FileManager.default.removeItem(at: baseURL)
+    }
+}
+
 @Test func creationIsIdempotent() async throws {
-    let tmp = FileManager.default.temporaryDirectory.appending(path: "tmp-database")
+    let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
     
-    // Initialize the database and create tables.
-    _ = try IrisDB(databaseLocation: tmp, databaseName: "main", embeddingProvider: embedder)
+    // Initialize the database and tables.
+    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", embeddingProvider: embedder)
 
-    // Create a second database, this should succeed even though we have already initialized another database instance.
-    _ = try IrisDB(databaseLocation: tmp, databaseName: "main", embeddingProvider: embedder)
-    
-    try FileManager.default.removeItem(at: tmp)
+    // a second database, this should succeed even though we have already initialized another database instance.
+    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", embeddingProvider: embedder)
 }
 
 @Test func insertDocument() async throws {
-    let databaseName = "main"
-    let tmp = FileManager.default.temporaryDirectory.appending(path: "tmp-database")
-    let bundleURL = tmp.appendingPathComponent("\(databaseName).irisdb")
-    let sqliteURL = bundleURL.appending(path: "map.sqlite")
-    
-    defer {
-        try? FileManager.default.removeItem(at: tmp)
-    }
+    let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: tmp, databaseName: databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
     
     let uuid = UUID()
     let content = "Test content"
-    try await database.insertDocument(id: uuid, content: content, chunker: chunker)
+    try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
     
-    let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+    let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
     let documents = try await dbQueue.read { db in
         return try IrisDocument.fetchAll(db)
     }
@@ -57,49 +68,87 @@ import GRDB
     #expect(mainDocument.content == content, "The document's content should match the provided ID.")
 }
 
-@Test func testLocalIndexCreated() async throws {
-    let databaseName = "main"
-    let tmp = FileManager.default.temporaryDirectory.appending(path: "tmp-database")
-    let bundleURL = tmp.appendingPathComponent("\(databaseName).irisdb")
-    let indexURL = bundleURL.appending(path: "indices")
-
-    defer {
-        try? FileManager.default.removeItem(at: tmp)
-    }
+@Test func faissIndicesArd() async throws {
+    let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: tmp, databaseName: databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
     
     let uuid = UUID()
     let content = "Test content"
     
-    let document = try await database.insertDocument(id: uuid, content: content, chunker: chunker)
-    let indexPath = indexURL.appending(path: "\(document.uuid.uuidString).index")
+    _ = try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.indexURL)
+    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
+
+    #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index file should exist.")
+    #expect(FileManager.default.fileExists(atPath: globalIndexPath.path()) == true, "The global index file should exist.")
+}
+
+@Test func faissIndicesAreValid() async throws {
+    let directories = TestingDirectories()
+
+    let embedder = try NLEmbedder(language: .english)
+    let chunker = BasicChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
     
-    #expect(FileManager.default.fileExists(atPath: indexPath.path()) == true, "The index file should exist at \(indexPath.path()).")
+    let uuid = UUID()
+    let content = "Test content"
+    
+    _ = try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.indexURL)
+    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
+    
+    #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true)
+    
+    // Local index is a flat index, so make sure it loads
+    _ = try FlatIndex.from(localIndexPath.path())
+    
+    #expect(FileManager.default.fileExists(atPath: globalIndexPath.path()) == true)
+
+    // The global index is an IDMap
+    let globalIndex = try IDMap.from(globalIndexPath.path())
+    #expect(globalIndex.idMap().count == 1)
 }
 
 
 @Test func insertDocumentVectorsMatchProviderDimensions() async throws {
-    let databaseName = "main"
-    let tmp = FileManager.default.temporaryDirectory.appending(path: "tmp-database")
-    let bundleURL = tmp.appendingPathComponent("\(databaseName).irisdb")
-    let sqliteURL = bundleURL.appending(path: "map.sqlite")
-    
-    defer {
-        try? FileManager.default.removeItem(at: tmp)
-    }
+    let directories = TestingDirectories()
     
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: tmp, databaseName: databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
     
     let uuid = UUID()
     let content = "Test content"
-    try await database.insertDocument(id: uuid, content: content, chunker: chunker)
+    try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
     
-    let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+    let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
+    let document = try await dbQueue.read { db in
+        return try IrisDocument.fetchOne(db)
+    }
+    
+    #expect(document != nil, "Document should exist.")
+    guard let embeddings = document?.embeddings else { return }
+    for embedding in embeddings {
+        #expect(embedding.count == embedder.dimension, "Vector dimensions should match the embedding provider.")
+    }
+}
+
+
+@Test func documentIsProperlyDelete() async throws {
+    let directories = TestingDirectories()
+        
+    let embedder = try NLEmbedder(language: .english)
+    let chunker = BasicChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    
+    let uuid = UUID()
+    let content = "Test content"
+    try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    
+    let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
     let document = try await dbQueue.read { db in
         return try IrisDocument.fetchOne(db)
     }

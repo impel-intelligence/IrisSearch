@@ -41,6 +41,20 @@ final class IrisDB {
     private static let databaseExtension = "irisdb"
     private static let indexExtension = "index"
     
+    enum IndexLocation {
+        case global
+        case document(uuid: UUID)
+        
+        func filePath(in location: URL) -> URL {
+            switch self {
+            case .global:
+                return location.appending(component: "global").appendingPathExtension(IrisDB.indexExtension)
+            case .document(let uuid):
+                return location.appending(component: uuid.uuidString).appendingPathExtension(IrisDB.indexExtension)
+            }
+        }
+    }
+
     private var embeddingProvider: EmbeddingProvider
     
     private var databaseURL: URL
@@ -74,7 +88,7 @@ final class IrisDB {
                 table.autoIncrementedPrimaryKey("id")
                 table.column("uuid", .blob)
                 table.column("content", .text).notNull()
-                table.column("embeddings", .blob).notNull()
+                table.column("embeddings", .jsonb).notNull()
             }
             
             try db.create(virtualTable: "documents_ft", ifNotExists: true, using: FTS5()) { table in
@@ -86,7 +100,7 @@ final class IrisDB {
     }
     
     @discardableResult
-    public func insertDocument(id: UUID, content: String, chunker: ContentChunker) async throws -> IrisDocument {
+    public func insertDocument(uuid: UUID, content: String, chunker: ContentChunker) async throws -> IrisDocument {
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
         let contentChunks = chunker.chunk(content: content)
         
@@ -105,7 +119,7 @@ final class IrisDB {
         }
         
         // Create a document object
-        let document = IrisDocument(uuid: id, content: content, embeddings: embeddings)
+        let document = IrisDocument(uuid: uuid, content: content, embeddings: embeddings)
         
         // Insert into the document into the database
         try await dbQueue.write { db in
@@ -118,8 +132,24 @@ final class IrisDB {
         return document
     }
     
+    public func deleteDocument(uuid: UUID) async throws {
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        
+        _ = try await dbQueue.write { db in
+            try IrisDocument.deleteOne(db, key: ["uuid": uuid.uuidString])
+        }
+        
+        let indexURL = IndexLocation.document(uuid: uuid).filePath(in: indexDirectory)
+        try FileManager.default.removeItem(at: indexURL)
+        
+        try await refreshGlobalIndex()
+    }
+}
+
+// MARK: Index Management
+extension IrisDB {
     private func refreshGlobalIndex() async throws {
-        let indexURL = indexDirectory.appending(component: "global").appendingPathExtension(IrisDB.indexExtension)
+        let indexURL = IndexLocation.global.filePath(in: indexDirectory)
         
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
         
@@ -148,8 +178,11 @@ final class IrisDB {
             index = try IDMap(subIndex: coreIndex)
         }
         
-        // First train the index with the new data
-        try index.train(embeddings)
+        // Check if the index needs to be trained, if so train.
+        if !index.isTrained {
+            try index.train(embeddings)
+        }
+        
         // Add the data to the index with their corresponding IDs
         try index.add(embeddings, ids: ids)
         // Save the global index
@@ -157,7 +190,7 @@ final class IrisDB {
     }
     
     private func refreshIndex(for document: IrisDocument) async throws {
-        let indexURL = indexDirectory.appending(component: document.uuid.uuidString).appendingPathExtension(IrisDB.indexExtension)
+        let indexURL = IndexLocation.document(uuid: document.uuid).filePath(in: indexDirectory)
         
         // Use a flat index for single document indices as we do not need anything faster.
         var index: FlatIndex
@@ -168,11 +201,13 @@ final class IrisDB {
         
         index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
         
-        // First train the index with the new data
-        try index.train(document.embeddings)
+        // Check if the index needs to be trained, if so train.
+        if !index.isTrained {
+            try index.train(document.embeddings)
+        }
+
         // Add the data to the index
         try index.add(document.embeddings)
-        
         
         try index.saveToFile(indexURL.path())
     }
