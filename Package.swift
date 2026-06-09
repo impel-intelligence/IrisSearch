@@ -20,8 +20,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.2.0"),
-        .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
-        .package(url: "https://github.com/apple/swift-algorithms", from: "1.2.1")
+        .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -30,8 +29,7 @@ let package = Package(
             name: "IrisSearch",
             dependencies: [
                 "SwiftFaiss",
-                .product(name: "GRDB", package: "GRDB.swift"),
-                .product(name: "Algorithms", package: "swift-algorithms")
+                .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
         .testTarget(

@@ -98,9 +98,12 @@ final class IrisDB {
             }
         }
     }
-    
+}
+
+// MARK: CRUD
+extension IrisDB {
     @discardableResult
-    public func insertDocument(uuid: UUID, content: String, chunker: ContentChunker) async throws -> IrisDocument {
+    public func createDocument(uuid: UUID, content: String, chunker: ContentChunker) async throws -> IrisDocument {
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
         let contentChunks = chunker.chunk(content: content)
         
@@ -130,6 +133,14 @@ final class IrisDB {
         try await refreshGlobalIndex()
         
         return document
+    }
+    
+    public func readDocument(uuid: UUID) async throws -> IrisDocument? {
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        
+        return try await dbQueue.read { db in
+            return try IrisDocument.fetchOne(db, key: ["uuid": uuid])
+        }
     }
     
     public func deleteDocument(uuid: UUID) async throws {
