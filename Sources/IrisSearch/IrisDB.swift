@@ -21,7 +21,7 @@ import SwiftFaissC
 final class IrisDocument: Codable, Identifiable, Sendable, FetchableRecord, PersistableRecord {
     static let databaseTableName: String = "documents"
     
-    nonisolated(unsafe) var id: Int64 = 0
+    nonisolated(unsafe) var id: Int64?
     let uuid: UUID
     let content: String
     let embeddings: [[Float]]
@@ -35,6 +35,10 @@ final class IrisDocument: Codable, Identifiable, Sendable, FetchableRecord, Pers
     func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
     }
+}
+
+enum IrisDBError: Error {
+    case documentNotFound
 }
 
 final class IrisDB {
@@ -102,16 +106,12 @@ final class IrisDB {
 
 // MARK: CRUD
 extension IrisDB {
-    @discardableResult
-    public func createDocument(uuid: UUID, content: String, chunker: ContentChunker) async throws -> IrisDocument {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
-        let contentChunks = chunker.chunk(content: content)
-        
+    private func createDocumentObject(uuid: UUID, content: String, chunks: [String]) async throws -> IrisDocument {
         // Create an array to store the embeddings for each content chunk. Storing chunk embeddings results in more accurate semantic search in longer documents.
         var embeddings: [[Float]] = []
-        embeddings.reserveCapacity(contentChunks.count)
+        embeddings.reserveCapacity(chunks.count)
         
-        for chunk in contentChunks {
+        for chunk in chunks {
             // Embed the content chunk, and convert from a double to a float to match FAISS
             var chunkEmbedding: [Float] = try await embeddingProvider.embed(content: chunk).map({Float($0)})
             
@@ -122,7 +122,17 @@ extension IrisDB {
         }
         
         // Create a document object
-        let document = IrisDocument(uuid: uuid, content: content, embeddings: embeddings)
+        return IrisDocument(uuid: uuid, content: content, embeddings: embeddings)
+    }
+    
+    
+    @discardableResult
+    public func createDocument(uuid: UUID, content: String, chunker: ContentChunker) async throws -> IrisDocument {
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        let contentChunks = chunker.chunk(content: content)
+        
+        // Create a document object
+        let document = try await createDocumentObject(uuid: uuid, content: content, chunks: contentChunks)
         
         // Insert into the document into the database
         try await dbQueue.write { db in
@@ -130,7 +140,7 @@ extension IrisDB {
         }
         
         try await refreshIndex(for: document)
-        try await refreshGlobalIndex()
+        try await addDocumentToGlobalIndex(document: document)
         
         return document
     }
@@ -143,8 +153,36 @@ extension IrisDB {
         }
     }
     
+    public func updateDocument(uuid: UUID, content: String, chunker: ContentChunker) async throws {
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        let contentChunks = chunker.chunk(content: content)
+        
+        // Create a document object
+        let newDocument = try await createDocumentObject(uuid: uuid, content: content, chunks: contentChunks)
+
+        try await dbQueue.write { [newDocument] db in
+            // We need to get the original document so we can find set the new document's id.
+            guard let existingDocument = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { throw IrisDBError.documentNotFound }
+
+            newDocument.id = existingDocument.id // Update the ID to match the existing document.
+
+            try newDocument.update(db)
+        }
+        
+        // Remove the existing index, and create a new one
+        try await refreshIndex(for: newDocument)
+        
+        // Remove the document we just updated from the global index. New document has the same ID so we can pass it in, instead of existing document.
+        try await removeDocumentFromGlobalIndex(document: newDocument)
+        try await addDocumentToGlobalIndex(document: newDocument)
+    }
+    
     public func deleteDocument(uuid: UUID) async throws {
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        
+        let tmpDocument = try await dbQueue.read { db in
+            return try IrisDocument.fetchOne(db, key: ["uuid": uuid])
+        }
         
         _ = try await dbQueue.write { db in
             try IrisDocument.deleteOne(db, key: ["uuid": uuid])
@@ -153,15 +191,70 @@ extension IrisDB {
         let indexURL = IndexLocation.document(uuid: uuid).filePath(in: indexDirectory)
         try FileManager.default.removeItem(at: indexURL)
         
-        try await refreshGlobalIndex()
+        // Remove the document we just deleted from the global index
+        if let tmpDocument {
+            try await removeDocumentFromGlobalIndex(document: tmpDocument)
+        }
     }
 }
 
 // MARK: Index Management
 extension IrisDB {
-    private func refreshGlobalIndex() async throws {
+    private func getGlobalIndex() throws -> IDMap {
         let indexURL = IndexLocation.global.filePath(in: indexDirectory)
         
+        if FileManager.default.fileExists(atPath: indexURL.path()),
+           let flatIndex = try? IDMap.from(indexURL.path(percentEncoded: false)) {
+            return flatIndex
+        } else {
+            let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
+            return try IDMap(subIndex: coreIndex)
+        }
+    }
+    
+    private func removeDocumentFromGlobalIndex(document: IrisDocument) async throws {
+        let indexURL = IndexLocation.global.filePath(in: indexDirectory)
+
+        guard let documentID = document.id else { throw IrisDBError.documentNotFound }
+
+        let index: IDMap = try getGlobalIndex()
+
+        // Delete all indices related to this document.
+        try index.removeIds([Int(documentID)])
+        
+        // Save the global index
+        try index.saveToFile(indexURL.path())
+    }
+    
+    private func addDocumentToGlobalIndex(document: IrisDocument) async throws {
+        let indexURL = IndexLocation.global.filePath(in: indexDirectory)
+
+        guard let documentID = document.id else { throw IrisDBError.documentNotFound }
+
+        let index: IDMap = try getGlobalIndex()
+
+        var embeddings: [[Float]] = []
+        var ids: [Int] = []
+
+        for embedding in document.embeddings {
+            embeddings.append(embedding)
+            ids.append(Int(documentID))
+        }
+
+        // Check if the index needs to be trained, if so train.
+        if !index.isTrained {
+            try index.train(embeddings)
+        }
+        
+        // Add the data to the index with their corresponding IDs
+        try index.add(embeddings, ids: ids)
+        // Save the global index
+        try index.saveToFile(indexURL.path())
+    }
+    
+    private func refreshGlobalIndex() async throws {
+        let indexURL = IndexLocation.global.filePath(in: indexDirectory)
+
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
         
         let documents = try await dbQueue.read { db in
@@ -173,22 +266,16 @@ extension IrisDB {
         var ids: [Int] = []
         
         for document in documents {
+            guard let documentID = document.id else { continue }
             // For each embedding in the document, add it with the document's rowID as its ID
             for embedding in document.embeddings {
                 embeddings.append(embedding)
-                ids.append(Int(document.id))
+                ids.append(Int(documentID))
             }
         }
         
-        var index: IDMap
-        if FileManager.default.fileExists(atPath: indexURL.path()),
-           let flatIndex = try? IDMap.from(indexURL.path(percentEncoded: false)) {
-            index = flatIndex
-        } else {
-            let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
-            index = try IDMap(subIndex: coreIndex)
-        }
-        
+        let index: IDMap = try getGlobalIndex()
+
         // Check if the index needs to be trained, if so train.
         if !index.isTrained {
             try index.train(embeddings)
@@ -203,14 +290,13 @@ extension IrisDB {
     private func refreshIndex(for document: IrisDocument) async throws {
         let indexURL = IndexLocation.document(uuid: document.uuid).filePath(in: indexDirectory)
         
-        // Use a flat index for single document indices as we do not need anything faster.
-        var index: FlatIndex
-        if FileManager.default.fileExists(atPath: indexURL.path()),
-           let flatIndex = try? FlatIndex.from(indexURL.path(percentEncoded: false)) {
-            index = flatIndex
+        // If an index already exists, remove it so we can create a new one.
+        if FileManager.default.fileExists(atPath: indexURL.path()) {
+            try FileManager.default.removeItem(at: indexURL)
         }
         
-        index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
+        // Use a flat index for single document indices as we do not need anything faster.
+        var index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
         
         // Check if the index needs to be trained, if so train.
         if !index.isTrained {
