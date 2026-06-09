@@ -52,7 +52,7 @@ class TestingDirectories {
     
     let uuid = UUID()
     let content = "Test content"
-    try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
     
     let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
     let documents = try await dbQueue.read { db in
@@ -77,7 +77,7 @@ class TestingDirectories {
     let uuid = UUID()
     let content = "Test content"
     
-    _ = try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    _ = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
     let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.indexURL)
     let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
 
@@ -95,7 +95,7 @@ class TestingDirectories {
     let uuid = UUID()
     let content = "Test content"
     
-    _ = try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    _ = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
     let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.indexURL)
     let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
     
@@ -121,7 +121,7 @@ class TestingDirectories {
     
     let uuid = UUID()
     let content = "Test content"
-    try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
     
     let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
     let document = try await dbQueue.read { db in
@@ -145,7 +145,7 @@ class TestingDirectories {
     
     let uuid = UUID()
     let content = "Test content"
-    let document = try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    let document = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
     
     try await database.deleteDocument(uuid: document.uuid)
     
@@ -159,6 +159,23 @@ class TestingDirectories {
     let localIndexPath = IrisDB.IndexLocation.document(uuid: document.uuid).filePath(in: directories.indexURL)
     
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == false, "The document's faiss index should have been removed.")
+}
+
+@Test func readingDocument() async throws {
+    let directories = TestingDirectories()
+    
+    let embedder = try NLEmbedder(language: .english)
+    let chunker = BasicChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    
+    let uuid = UUID()
+    let content = "Test content"
+    try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
+
+    let readDocument = try await database.readDocument(uuid: uuid)
+    #expect(readDocument != nil)
+    #expect(readDocument?.uuid == uuid)
+    #expect(readDocument?.content == content)
 }
 
 
