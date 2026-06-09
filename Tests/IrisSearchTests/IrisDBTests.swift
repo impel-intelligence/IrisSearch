@@ -24,7 +24,6 @@ class TestingDirectories {
         bundleURL = baseURL.appendingPathComponent("\(databaseName).irisdb")
         sqliteURL = bundleURL.appending(path: "map.sqlite")
         indexURL = bundleURL.appending(path: "indices")
-        print(baseURL)
     }
     
     deinit {
@@ -146,18 +145,20 @@ class TestingDirectories {
     
     let uuid = UUID()
     let content = "Test content"
-    try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    let document = try await database.insertDocument(uuid: uuid, content: content, chunker: chunker)
+    
+    try await database.deleteDocument(uuid: document.uuid)
     
     let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
-    let document = try await dbQueue.read { db in
+    let recheckedDoc = try await dbQueue.read { db in
         return try IrisDocument.fetchOne(db)
     }
+
+    #expect(recheckedDoc == nil, "Document should have been deleted from the database.")
     
-    #expect(document != nil, "Document should exist.")
-    guard let embeddings = document?.embeddings else { return }
-    for embedding in embeddings {
-        #expect(embedding.count == embedder.dimension, "Vector dimensions should match the embedding provider.")
-    }
+    let localIndexPath = IrisDB.IndexLocation.document(uuid: document.uuid).filePath(in: directories.indexURL)
+    
+    #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == false, "The document's faiss index should have been removed.")
 }
 
 

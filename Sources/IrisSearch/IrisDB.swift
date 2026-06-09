@@ -86,7 +86,7 @@ final class IrisDB {
         try dbQueue.write { db in
             try db.create(table: "documents", ifNotExists: true) { table in
                 table.autoIncrementedPrimaryKey("id")
-                table.column("uuid", .blob)
+                table.column("uuid", .blob).notNull().unique()
                 table.column("content", .text).notNull()
                 table.column("embeddings", .jsonb).notNull()
             }
@@ -136,7 +136,7 @@ final class IrisDB {
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
         
         _ = try await dbQueue.write { db in
-            try IrisDocument.deleteOne(db, key: ["uuid": uuid.uuidString])
+            try IrisDocument.deleteOne(db, key: ["uuid": uuid])
         }
         
         let indexURL = IndexLocation.document(uuid: uuid).filePath(in: indexDirectory)
