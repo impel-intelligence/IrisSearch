@@ -20,7 +20,7 @@ enum DigestionError: Error {
 protocol FileDigester {
     static var fileTypes: [UTType] { get }
     
-    func digest(file: URL) throws -> [EmbeddableContent]
+    func digest(file: URL) async throws -> [EmbeddableContent]
 }
 
 extension FileDigester {
