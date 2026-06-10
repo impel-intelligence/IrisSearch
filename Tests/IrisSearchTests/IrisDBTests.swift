@@ -17,13 +17,15 @@ class TestingDirectories {
     let baseURL: URL
     let bundleURL: URL
     let sqliteURL: URL
-    let indexURL: URL
+    let textIndexURL: URL
+//    let imageIndexURL: URL
     
     init() {
         baseURL = FileManager.default.temporaryDirectory.appending(path: "tmp-database-\(UUID())")
         bundleURL = baseURL.appendingPathComponent("\(databaseName).irisdb")
         sqliteURL = bundleURL.appending(path: "map.sqlite")
-        indexURL = bundleURL.appending(path: "indices")
+        textIndexURL = bundleURL.appending(path: "text-index")
+//        imageIndexURL = bundleURL.appending(path: "image-index")
     }
     
     deinit {
@@ -37,10 +39,10 @@ class TestingDirectories {
     let embedder = try NLEmbedder(language: .english)
     
     // Initialize the database and tables.
-    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", embeddingProvider: embedder)
+    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder)
 
     // a second database, this should succeed even though we have already initialized another database instance.
-    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", embeddingProvider: embedder)
+    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder)
 }
 
 @Test func insertDocument() async throws {
@@ -48,7 +50,7 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
     
     let uuid = UUID()
     let content = "Test content"
@@ -72,14 +74,14 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
     
     let uuid = UUID()
     let content = "Test content"
     
     _ = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
-    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.indexURL)
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
+    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
+    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
 
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index file should exist.")
     #expect(FileManager.default.fileExists(atPath: globalIndexPath.path()) == true, "The global index file should exist.")
@@ -90,14 +92,14 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
     
     let uuid = UUID()
     let content = "Test content"
     
     _ = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
-    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.indexURL)
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
+    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
+    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
     
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true)
     
@@ -117,7 +119,7 @@ class TestingDirectories {
     
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
     
     let uuid = UUID()
     let content = "Test content"
@@ -141,7 +143,7 @@ class TestingDirectories {
         
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
     
     let uuid = UUID()
     let content = "Test content"
@@ -156,7 +158,7 @@ class TestingDirectories {
 
     #expect(recheckedDoc == nil, "Document should have been deleted from the database.")
     
-    let localIndexPath = IrisDB.IndexLocation.document(uuid: document.uuid).filePath(in: directories.indexURL)
+    let localIndexPath = IrisDB.IndexLocation.document(uuid: document.uuid).filePath(in: directories.textIndexURL)
     
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == false, "The document's faiss index should have been removed.")
 }
@@ -166,7 +168,7 @@ class TestingDirectories {
     
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
     
     let uuid = UUID()
     let content = "Test content"
@@ -186,7 +188,7 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
     let uuid = UUID()
     let original = try await database.createDocument(uuid: uuid, content: "Original content", chunker: chunker)
@@ -212,7 +214,7 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
     let uuid = UUID()
     try await database.createDocument(uuid: uuid, content: "Original content", chunker: chunker)
@@ -233,7 +235,7 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
     await #expect(throws: IrisDBError.documentNotFound) {
         try await database.updateDocument(uuid: UUID(), content: "No such document", chunker: chunker)
@@ -245,7 +247,7 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
     let uuid = UUID()
     try await database.createDocument(uuid: uuid, content: "Original content", chunker: chunker)
@@ -254,7 +256,7 @@ class TestingDirectories {
     let expectedChunks = chunker.chunk(content: newContent)
     try await database.updateDocument(uuid: uuid, content: newContent, chunker: chunker)
 
-    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.indexURL)
+    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index should still exist after an update.")
 
     let localIndex = try FlatIndex.from(localIndexPath.path())
@@ -266,7 +268,7 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
     let uuid = UUID()
     let document = try await database.createDocument(uuid: uuid, content: "Original content", chunker: chunker)
@@ -275,7 +277,7 @@ class TestingDirectories {
     let expectedChunks = chunker.chunk(content: newContent)
     try await database.updateDocument(uuid: uuid, content: newContent, chunker: chunker)
 
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
+    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
     let globalIndex = try IDMap.from(globalIndexPath.path())
     let ids = globalIndex.idMap()
     let documentID = try #require(document.id)
@@ -291,7 +293,7 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
     let firstUUID = UUID()
     let secondUUID = UUID()
@@ -301,7 +303,7 @@ class TestingDirectories {
     let expectedFirst = chunker.chunk(content: "First document").count
     let expectedSecond = chunker.chunk(content: "Second document").count
 
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
+    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
     let globalIndex = try IDMap.from(globalIndexPath.path())
     let ids = globalIndex.idMap()
     let firstID = try #require(first.id)
@@ -318,7 +320,7 @@ class TestingDirectories {
 
     let embedder = try NLEmbedder(language: .english)
     let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, embeddingProvider: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
     let keepUUID = UUID()
     let removeUUID = UUID()
@@ -329,7 +331,7 @@ class TestingDirectories {
 
     let expectedKeep = chunker.chunk(content: "Document to keep").count
 
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.indexURL)
+    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
     let globalIndex = try IDMap.from(globalIndexPath.path())
     let ids = globalIndex.idMap()
     let keepID = try #require(keep.id)
