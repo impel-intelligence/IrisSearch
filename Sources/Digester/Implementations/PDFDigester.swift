@@ -10,14 +10,67 @@ import IrisCommon
 import Foundation
 import PDFKit
 
+extension CGImage {
+    var jpgData: Data? {
+        let bitmapRep = NSBitmapImageRep(cgImage: self)
+        return bitmapRep.representation(using: .jpeg, properties: [:])
+    }
+}
+
 enum PDFDigestionError: Error {
     case couldNotCreateDocument
 }
 
 class PDFDigester: FileDigester {
-    static let fileTypes: [UTType] = [.text, .plainText]
+    static let fileTypes: [UTType] = [.pdf, UTType("com.adobe.pdf")!]
     
-    func digest(file: URL) throws -> [EmbeddableContent] {
+    /// Render PDF pages to CGImages
+    /// This runs fairly quickly, with a 200 page document taking around ​0.13 seconds. It is not instead, but fairly close.
+    ///
+    /// - Parameter document: the PDFDocument to render from
+    /// - Returns: A set of CGImages for each page in the PDF, rendered at the same size they are in the PDF.
+    func renderPages(from document: PDFDocument) async throws -> [CGImage] {
+        // A wrapper struct that puts a PDF page into a "sendable" struct so it can pass the task boundary. Unsafe, but we don't need to worry since we never modify the data, just read.
+        struct SendablePage: @unchecked Sendable {
+            let page: PDFPage
+        }
+        
+        let pages = (0..<document.pageCount).compactMap { document.page(at: $0) }.map { SendablePage(page: $0) }
+        
+        return try await withThrowingTaskGroup(of: CGImage?.self) { group in
+            for wrapper in pages {
+                group.addTask {
+                    let page = wrapper.page
+                    let rect = page.bounds(for: .mediaBox)
+                    
+                    guard let context = CGContext(
+                        data: nil,
+                        width: Int(rect.width),
+                        height: Int(rect.height),
+                        bitsPerComponent: 8,
+                        bytesPerRow: 0,
+                        space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    ) else { return nil }
+                    
+                    page.draw(with: .mediaBox, to: context)
+                    return context.makeImage()
+                }
+            }
+            
+            var images: [CGImage] = []
+            
+            // Gather results as they finish
+            for try await result in group {
+                guard let image = result else { continue }
+                images.append(image)
+            }
+            
+            return images
+        }
+    }
+    
+    func digest(file: URL) async throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
         try PDFDigester.validateLocalURL(file)
 
@@ -32,40 +85,13 @@ class PDFDigester: FileDigester {
             contentPieces.append(.text(content: content))
         }
         
-        return []
-//
-//        if let pdf = PDFDocument(data: data) {
-//            guard var string = pdf.string else {
-//                throw CDError.pdfStringExtractionFailed
-//            }
-//            
-//            let documentTitleRange = string.lineRange(for: string.startIndex...string.startIndex) // Get the first line of the document
-//            let documentTitle = string[documentTitleRange].trimmingCharacters(in: .whitespacesAndNewlines)
-//            
-//            string.replace("\n", with: "")
-//            string.replace("<EOS>", with: "")
-//            string.replace("<pad>", with: "")
-//            string = string.trimmingCharacters(in: .whitespaces)
-//            
-//            var documentContent: String = "\(documentTitle)\n"
-//            for x in 0..<pdf.pageCount {
-//                let page = pdf.page(at: x)!
-//                var pageString = page.attributedString?.string ?? ""
-//                pageString.replace("\n", with: "")
-//                pageString.replace("<EOS>", with: "")
-//                pageString.replace("<pad>", with: "")
-//                pageString = pageString.trimmingCharacters(in: .whitespaces)
-//                
-//                if x != 0 {
-//                    pageString = pageString.replacingOccurrences(of: documentTitle, with: "")
-//                }
-//                
-//                documentContent.append(pageString)
-//            }
-//            
-//            return (documentContent, .pdf)
-//        }
+        let pageImages = try await renderPages(from: pdfDocument)
+        
+        for (index, page) in pageImages.enumerated() {
+            guard let jpgData = page.jpgData else { continue }
+            contentPieces.append(.image(content: jpgData, caption: "Page \(index) of PDF"))
+        }
 
-
+        return contentPieces
     }
 }
