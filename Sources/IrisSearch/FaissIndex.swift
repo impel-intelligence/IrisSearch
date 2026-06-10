@@ -5,7 +5,6 @@
 //  Created by Taylor Lineman on 6/10/26.
 //
 
-
 import Foundation
 import SwiftFaiss
 import SwiftFaissC
@@ -38,16 +37,16 @@ final class FaissIndex {
     }
     
     private func initializeDB() throws {
-        if !FileManager.default.fileExists(atPath: indexLocation.path()) {
+        if !FileManager.default.fileExists(atPath: indexLocation.path(percentEncoded: false)) {
             try FileManager.default.createDirectory(at: indexLocation, withIntermediateDirectories: true)
         }
     }
-
+    
     public func addDocument(document: IrisDocument) throws {
         try refreshIndex(for: document)
         try addDocumentToGlobalIndex(document: document)
     }
-
+    
     public func removeDocument(document: IrisDocument) throws {
         let indexURL = IndexLocation.document(uuid: document.uuid).filePath(in: indexLocation)
         try FileManager.default.removeItem(at: indexURL)
@@ -55,11 +54,14 @@ final class FaissIndex {
         try removeDocumentFromGlobalIndex(document: document)
     }
     
-    // MARK: Index Management
+}
+
+// MARK: Index Management
+extension FaissIndex {
     private func getGlobalIndex() throws -> IDMap {
         let indexURL = IndexLocation.global.filePath(in: indexLocation)
         
-        if FileManager.default.fileExists(atPath: indexURL.path()),
+        if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)),
            let flatIndex = try? IDMap.from(indexURL.path(percentEncoded: false)) {
             return flatIndex
         } else {
@@ -79,7 +81,7 @@ final class FaissIndex {
         try index.removeIds([Int(documentID)])
         
         // Save the global index
-        try index.saveToFile(indexURL.path())
+        try index.saveToFile(indexURL.path(percentEncoded: false))
     }
     
     private func addDocumentToGlobalIndex(document: IrisDocument) throws {
@@ -105,7 +107,7 @@ final class FaissIndex {
         // Add the data to the index with their corresponding IDs
         try index.add(embeddings, ids: ids)
         // Save the global index
-        try index.saveToFile(indexURL.path())
+        try index.saveToFile(indexURL.path(percentEncoded: false))
     }
     
     private func refreshGlobalIndex(documents: [IrisDocument]) throws {
@@ -134,19 +136,19 @@ final class FaissIndex {
         // Add the data to the index with their corresponding IDs
         try index.add(embeddings, ids: ids)
         // Save the global index
-        try index.saveToFile(indexURL.path())
+        try index.saveToFile(indexURL.path(percentEncoded: false))
     }
     
     private func refreshIndex(for document: IrisDocument) throws {
         let indexURL = IndexLocation.document(uuid: document.uuid).filePath(in: indexLocation)
         
         // If an index already exists, remove it so we can create a new one.
-        if FileManager.default.fileExists(atPath: indexURL.path()) {
+        if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)) {
             try FileManager.default.removeItem(at: indexURL)
         }
         
         // Use a flat index for single document indices as we do not need anything faster.
-        var index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
+        let index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
         
         // Check if the index needs to be trained, if so train.
         if !index.isTrained {
@@ -156,7 +158,7 @@ final class FaissIndex {
         // Add the data to the index
         try index.add(document.embeddings)
         
-        try index.saveToFile(indexURL.path())
+        try index.saveToFile(indexURL.path(percentEncoded: false))
     }
 }
 

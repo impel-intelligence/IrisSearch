@@ -2,7 +2,7 @@
 //  IrisDBTests.swift
 //  IrisSearch
 //
-// d by Taylor Lineman on 6/8/26.
+//  by Taylor Lineman on 6/8/26.
 //
 
 import Testing
@@ -69,7 +69,7 @@ class TestingDirectories {
     #expect(mainDocument.content == content, "The document's content should match the provided ID.")
 }
 
-@Test func faissIndicesArd() async throws {
+@Test func faissIndicesAreCreated() async throws {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
@@ -80,8 +80,8 @@ class TestingDirectories {
     let content = "Test content"
     
     _ = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
-    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
+    let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
+    let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
 
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index file should exist.")
     #expect(FileManager.default.fileExists(atPath: globalIndexPath.path()) == true, "The global index file should exist.")
@@ -98,8 +98,8 @@ class TestingDirectories {
     let content = "Test content"
     
     _ = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
-    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
+    let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
+    let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
     
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true)
     
@@ -158,7 +158,7 @@ class TestingDirectories {
 
     #expect(recheckedDoc == nil, "Document should have been deleted from the database.")
     
-    let localIndexPath = IrisDB.IndexLocation.document(uuid: document.uuid).filePath(in: directories.textIndexURL)
+    let localIndexPath = FaissIndex.IndexLocation.document(uuid: document.uuid).filePath(in: directories.textIndexURL)
     
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == false, "The document's faiss index should have been removed.")
 }
@@ -256,7 +256,7 @@ class TestingDirectories {
     let expectedChunks = chunker.chunk(content: newContent)
     try await database.updateDocument(uuid: uuid, content: newContent, chunker: chunker)
 
-    let localIndexPath = IrisDB.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
+    let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
     #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index should still exist after an update.")
 
     let localIndex = try FlatIndex.from(localIndexPath.path())
@@ -277,7 +277,7 @@ class TestingDirectories {
     let expectedChunks = chunker.chunk(content: newContent)
     try await database.updateDocument(uuid: uuid, content: newContent, chunker: chunker)
 
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
+    let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
     let globalIndex = try IDMap.from(globalIndexPath.path())
     let ids = globalIndex.idMap()
     let documentID = try #require(document.id)
@@ -303,7 +303,7 @@ class TestingDirectories {
     let expectedFirst = chunker.chunk(content: "First document").count
     let expectedSecond = chunker.chunk(content: "Second document").count
 
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
+    let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
     let globalIndex = try IDMap.from(globalIndexPath.path())
     let ids = globalIndex.idMap()
     let firstID = try #require(first.id)
@@ -331,7 +331,7 @@ class TestingDirectories {
 
     let expectedKeep = chunker.chunk(content: "Document to keep").count
 
-    let globalIndexPath = IrisDB.IndexLocation.global.filePath(in: directories.textIndexURL)
+    let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
     let globalIndex = try IDMap.from(globalIndexPath.path())
     let ids = globalIndex.idMap()
     let keepID = try #require(keep.id)
