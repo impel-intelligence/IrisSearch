@@ -11,12 +11,15 @@ import SwiftFaiss
 import SwiftFaissC
 
 /// Database Structure File package
-/// - Vector Indices
-///     - all
-///     - doc-1
-///     - doct-2
-/// - Map File
-/// - Compressed long-term text storage
+/// - text-indices
+///     - all.index
+///     - doc-1.index
+///     - doct-2.index
+/// - image-indices
+///     - all.index
+///     - doc-1.index
+///     - doc-3.index
+/// - map.sqlite
 
 final class IrisDocument: Codable, Identifiable, Sendable, FetchableRecord, PersistableRecord {
     static let databaseTableName: String = "documents"
@@ -58,33 +61,30 @@ final class IrisDB {
             }
         }
     }
-
-    private var embeddingProvider: EmbeddingProvider
     
     private var databaseURL: URL
     private var sqliteURL: URL {
         return databaseURL.appending(path: "map").appendingPathExtension("sqlite")
     }
-    private var indexDirectory: URL {
-        return databaseURL.appending(path: "indices")
-    }
     
-    init(databaseLocation: URL, databaseName: String = "main", embeddingProvider: EmbeddingProvider) throws {
+    private var textIndex: FaissIndex
+    private var textEmbedder: EmbeddingProvider
+    
+    init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
-        self.embeddingProvider = embeddingProvider
+        self.textEmbedder = textEmbedder
         
         if !FileManager.default.fileExists(atPath: databaseLocation.path()) {
             try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
         }
         
-        if !FileManager.default.fileExists(atPath: indexDirectory.path()) {
-            try FileManager.default.createDirectory(at: indexDirectory, withIntermediateDirectories: true)
-        }
+        self.textIndex = try FaissIndex(indexLocation: databaseURL.appending(path: "text-index"), embeddingProvider: textEmbedder)
         
         try initializeDB()
     }
     
     private func initializeDB() throws {
+        print(sqliteURL)
         let dbQueue = try DatabaseQueue(path: sqliteURL.path())
         
         try dbQueue.write { db in
@@ -104,6 +104,7 @@ final class IrisDB {
     }
 }
 
+// TODO: We need to support images as well as text, so people can search for figures.
 // MARK: CRUD
 extension IrisDB {
     private func createDocumentObject(uuid: UUID, content: String, chunks: [String]) async throws -> IrisDocument {
@@ -113,10 +114,10 @@ extension IrisDB {
         
         for chunk in chunks {
             // Embed the content chunk, and convert from a double to a float to match FAISS
-            var chunkEmbedding: [Float] = try await embeddingProvider.embed(content: chunk).map({Float($0)})
+            var chunkEmbedding: [Float] = try await textEmbedder.embed(content: chunk).map({Float($0)})
             
             // Normalize the vector into a format suited for the L2 search metric.
-            faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &chunkEmbedding)
+            faiss_fvec_renorm_L2(textEmbedder.dimension, 1, &chunkEmbedding)
             
             embeddings.append(chunkEmbedding)
         }
@@ -139,8 +140,7 @@ extension IrisDB {
             try document.insert(db)
         }
         
-        try await refreshIndex(for: document)
-        try await addDocumentToGlobalIndex(document: document)
+        try textIndex.addDocument(document: document)
         
         return document
     }
@@ -169,12 +169,8 @@ extension IrisDB {
             try newDocument.update(db)
         }
         
-        // Remove the existing index, and create a new one
-        try await refreshIndex(for: newDocument)
-        
-        // Remove the document we just updated from the global index. New document has the same ID so we can pass it in, instead of existing document.
-        try await removeDocumentFromGlobalIndex(document: newDocument)
-        try await addDocumentToGlobalIndex(document: newDocument)
+        try textIndex.removeDocument(document: newDocument)
+        try textIndex.addDocument(document: newDocument)
     }
     
     public func deleteDocument(uuid: UUID) async throws {
@@ -187,126 +183,10 @@ extension IrisDB {
         _ = try await dbQueue.write { db in
             try IrisDocument.deleteOne(db, key: ["uuid": uuid])
         }
-        
-        let indexURL = IndexLocation.document(uuid: uuid).filePath(in: indexDirectory)
-        try FileManager.default.removeItem(at: indexURL)
-        
+
         // Remove the document we just deleted from the global index
         if let tmpDocument {
-            try await removeDocumentFromGlobalIndex(document: tmpDocument)
+            try textIndex.removeDocument(document: tmpDocument)
         }
     }
 }
-
-// MARK: Index Management
-extension IrisDB {
-    private func getGlobalIndex() throws -> IDMap {
-        let indexURL = IndexLocation.global.filePath(in: indexDirectory)
-        
-        if FileManager.default.fileExists(atPath: indexURL.path()),
-           let flatIndex = try? IDMap.from(indexURL.path(percentEncoded: false)) {
-            return flatIndex
-        } else {
-            let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
-            return try IDMap(subIndex: coreIndex)
-        }
-    }
-    
-    private func removeDocumentFromGlobalIndex(document: IrisDocument) async throws {
-        let indexURL = IndexLocation.global.filePath(in: indexDirectory)
-
-        guard let documentID = document.id else { throw IrisDBError.documentNotFound }
-
-        let index: IDMap = try getGlobalIndex()
-
-        // Delete all indices related to this document.
-        try index.removeIds([Int(documentID)])
-        
-        // Save the global index
-        try index.saveToFile(indexURL.path())
-    }
-    
-    private func addDocumentToGlobalIndex(document: IrisDocument) async throws {
-        let indexURL = IndexLocation.global.filePath(in: indexDirectory)
-
-        guard let documentID = document.id else { throw IrisDBError.documentNotFound }
-
-        let index: IDMap = try getGlobalIndex()
-
-        var embeddings: [[Float]] = []
-        var ids: [Int] = []
-
-        for embedding in document.embeddings {
-            embeddings.append(embedding)
-            ids.append(Int(documentID))
-        }
-
-        // Check if the index needs to be trained, if so train.
-        if !index.isTrained {
-            try index.train(embeddings)
-        }
-        
-        // Add the data to the index with their corresponding IDs
-        try index.add(embeddings, ids: ids)
-        // Save the global index
-        try index.saveToFile(indexURL.path())
-    }
-    
-    private func refreshGlobalIndex() async throws {
-        let indexURL = IndexLocation.global.filePath(in: indexDirectory)
-
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
-        
-        let documents = try await dbQueue.read { db in
-            return try IrisDocument.fetchAll(db)
-        }
-        
-        // Create parallel arrays of embeddings and their corresponding document indices
-        var embeddings: [[Float]] = []
-        var ids: [Int] = []
-        
-        for document in documents {
-            guard let documentID = document.id else { continue }
-            // For each embedding in the document, add it with the document's rowID as its ID
-            for embedding in document.embeddings {
-                embeddings.append(embedding)
-                ids.append(Int(documentID))
-            }
-        }
-        
-        let index: IDMap = try getGlobalIndex()
-
-        // Check if the index needs to be trained, if so train.
-        if !index.isTrained {
-            try index.train(embeddings)
-        }
-        
-        // Add the data to the index with their corresponding IDs
-        try index.add(embeddings, ids: ids)
-        // Save the global index
-        try index.saveToFile(indexURL.path())
-    }
-    
-    private func refreshIndex(for document: IrisDocument) async throws {
-        let indexURL = IndexLocation.document(uuid: document.uuid).filePath(in: indexDirectory)
-        
-        // If an index already exists, remove it so we can create a new one.
-        if FileManager.default.fileExists(atPath: indexURL.path()) {
-            try FileManager.default.removeItem(at: indexURL)
-        }
-        
-        // Use a flat index for single document indices as we do not need anything faster.
-        var index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
-        
-        // Check if the index needs to be trained, if so train.
-        if !index.isTrained {
-            try index.train(document.embeddings)
-        }
-
-        // Add the data to the index
-        try index.add(document.embeddings)
-        
-        try index.saveToFile(indexURL.path())
-    }
-}
-
