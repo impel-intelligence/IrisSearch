@@ -9,6 +9,7 @@ import Foundation
 import GRDB
 import SwiftFaiss
 import SwiftFaissC
+import IrisCommon
 
 /// Database Structure File package
 /// - text-indices
@@ -20,26 +21,6 @@ import SwiftFaissC
 ///     - doc-1.index
 ///     - doc-3.index
 /// - map.sqlite
-
-final class IrisDocument: Codable, Identifiable, Sendable, FetchableRecord, PersistableRecord {
-    static let databaseTableName: String = "documents"
-    
-    nonisolated(unsafe) var id: Int64?
-    let uuid: UUID
-    let content: String
-    let embeddings: [[Float]]
-    
-    init(uuid: UUID, content: String, embeddings: [[Float]]) {
-        self.uuid = uuid
-        self.content = content
-        self.embeddings = embeddings
-    }
-    
-    func didInsert(_ inserted: InsertionSuccess) {
-        id = inserted.rowID
-    }
-}
-
 enum IrisDBError: Error {
     case documentNotFound
 }
@@ -47,20 +28,6 @@ enum IrisDBError: Error {
 final class IrisDB {
     private static let databaseExtension = "irisdb"
     private static let indexExtension = "index"
-    
-    enum IndexLocation {
-        case global
-        case document(uuid: UUID)
-        
-        func filePath(in location: URL) -> URL {
-            switch self {
-            case .global:
-                return location.appending(component: "global").appendingPathExtension(IrisDB.indexExtension)
-            case .document(let uuid):
-                return location.appending(component: uuid.uuidString).appendingPathExtension(IrisDB.indexExtension)
-            }
-        }
-    }
     
     private var databaseURL: URL
     private var sqliteURL: URL {
@@ -74,7 +41,7 @@ final class IrisDB {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
         self.textEmbedder = textEmbedder
         
-        if !FileManager.default.fileExists(atPath: databaseLocation.path()) {
+        if !FileManager.default.fileExists(atPath: databaseLocation.path(percentEncoded: false)) {
             try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
         }
         
@@ -84,8 +51,7 @@ final class IrisDB {
     }
     
     private func initializeDB() throws {
-        print(sqliteURL)
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         
         try dbQueue.write { db in
             try db.create(table: "documents", ifNotExists: true) { table in
@@ -129,7 +95,7 @@ extension IrisDB {
     
     @discardableResult
     public func createDocument(uuid: UUID, content: String, chunker: ContentChunker) async throws -> IrisDocument {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         let contentChunks = chunker.chunk(content: content)
         
         // Create a document object
@@ -146,7 +112,7 @@ extension IrisDB {
     }
     
     public func readDocument(uuid: UUID) async throws -> IrisDocument? {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         
         return try await dbQueue.read { db in
             return try IrisDocument.fetchOne(db, key: ["uuid": uuid])
@@ -154,7 +120,7 @@ extension IrisDB {
     }
     
     public func updateDocument(uuid: UUID, content: String, chunker: ContentChunker) async throws {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         let contentChunks = chunker.chunk(content: content)
         
         // Create a document object
@@ -174,7 +140,7 @@ extension IrisDB {
     }
     
     public func deleteDocument(uuid: UUID) async throws {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path())
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         
         let tmpDocument = try await dbQueue.read { db in
             return try IrisDocument.fetchOne(db, key: ["uuid": uuid])
