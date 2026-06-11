@@ -5,7 +5,7 @@
 //  Created by Taylor Lineman on 6/8/26.
 //
 
-struct BasicChunker: ContentChunker {
+struct BasicTextChunker: TextChunker {
     func chunk(content: String) -> [String] {
         return chunkText(input: content, splits: ["\n", "."], targetCharacters: 512, overlap: 0)
     }

@@ -39,22 +39,21 @@ class TestingDirectories {
     let embedder = try NLEmbedder(language: .english)
     
     // Initialize the database and tables.
-    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder)
+    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder, textChunker: BasicTextChunker())
 
     // a second database, this should succeed even though we have already initialized another database instance.
-    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder)
+    _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder, textChunker: BasicTextChunker())
 }
 
 @Test func insertDocument() async throws {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
     
     let uuid = UUID()
     let content = "Test content"
-    try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
+    try await database.createDocument(uuid: uuid, content: content)
     
     let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
     let documents = try await dbQueue.read { db in
@@ -73,13 +72,12 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
     
     let uuid = UUID()
     let content = "Test content"
     
-    _ = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
+    _ = try await database.createDocument(uuid: uuid, content: content)
     let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
     let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
 
@@ -91,13 +89,13 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
     
     let uuid = UUID()
     let content = "Test content"
     
-    _ = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
+    _ = try await database.createDocument(uuid: uuid, content: content)
     let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
     let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
     
@@ -118,12 +116,12 @@ class TestingDirectories {
     let directories = TestingDirectories()
     
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
     
     let uuid = UUID()
     let content = "Test content"
-    try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
+    try await database.createDocument(uuid: uuid, content: content)
     
     let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
     let document = try await dbQueue.read { db in
@@ -142,12 +140,12 @@ class TestingDirectories {
     let directories = TestingDirectories()
         
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
     
     let uuid = UUID()
     let content = "Test content"
-    let document = try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
+    let document = try await database.createDocument(uuid: uuid, content: content)
     
     try await database.deleteDocument(uuid: document.uuid)
     
@@ -167,12 +165,12 @@ class TestingDirectories {
     let directories = TestingDirectories()
     
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
     
     let uuid = UUID()
     let content = "Test content"
-    try await database.createDocument(uuid: uuid, content: content, chunker: chunker)
+    try await database.createDocument(uuid: uuid, content: content)
 
     let readDocument = try await database.readDocument(uuid: uuid)
     #expect(readDocument != nil)
@@ -187,11 +185,11 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
     let uuid = UUID()
-    let original = try await database.createDocument(uuid: uuid, content: "Original content", chunker: chunker)
+    let original = try await database.createDocument(uuid: uuid, content: "Original content")
 
     let newContent = "Completely different content"
     try await database.updateDocument(uuid: uuid, content: newContent, chunker: chunker)
@@ -213,11 +211,11 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
     let uuid = UUID()
-    try await database.createDocument(uuid: uuid, content: "Original content", chunker: chunker)
+    try await database.createDocument(uuid: uuid, content: "Original content")
 
     // Use content large enough to produce more than one chunk.
     let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
@@ -234,8 +232,8 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
     await #expect(throws: IrisDBError.documentNotFound) {
         try await database.updateDocument(uuid: UUID(), content: "No such document", chunker: chunker)
@@ -246,11 +244,11 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
     let uuid = UUID()
-    try await database.createDocument(uuid: uuid, content: "Original content", chunker: chunker)
+    try await database.createDocument(uuid: uuid, content: "Original content")
 
     let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
     let expectedChunks = chunker.chunk(content: newContent)
@@ -267,11 +265,11 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
     let uuid = UUID()
-    let document = try await database.createDocument(uuid: uuid, content: "Original content", chunker: chunker)
+    let document = try await database.createDocument(uuid: uuid, content: "Original content")
 
     let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
     let expectedChunks = chunker.chunk(content: newContent)
@@ -292,13 +290,13 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
     let firstUUID = UUID()
     let secondUUID = UUID()
-    let first = try await database.createDocument(uuid: firstUUID, content: "First document", chunker: chunker)
-    let second = try await database.createDocument(uuid: secondUUID, content: "Second document", chunker: chunker)
+    let first = try await database.createDocument(uuid: firstUUID, content: "First document")
+    let second = try await database.createDocument(uuid: secondUUID, content: "Second document")
 
     let expectedFirst = chunker.chunk(content: "First document").count
     let expectedSecond = chunker.chunk(content: "Second document").count
@@ -319,13 +317,13 @@ class TestingDirectories {
     let directories = TestingDirectories()
 
     let embedder = try NLEmbedder(language: .english)
-    let chunker = BasicChunker()
-    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+    let chunker = BasicTextChunker()
+    let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
     let keepUUID = UUID()
     let removeUUID = UUID()
-    let keep = try await database.createDocument(uuid: keepUUID, content: "Document to keep", chunker: chunker)
-    let remove = try await database.createDocument(uuid: removeUUID, content: "Document to remove", chunker: chunker)
+    let keep = try await database.createDocument(uuid: keepUUID, content: "Document to keep")
+    let remove = try await database.createDocument(uuid: removeUUID, content: "Document to remove")
 
     try await database.deleteDocument(uuid: removeUUID)
 
