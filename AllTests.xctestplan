@@ -1,0 +1,38 @@
+{
+  "configurations" : [
+    {
+      "id" : "67B125CE-98BC-44D3-ABAA-08E883728BCD",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "IrisSearchTests",
+        "name" : "IrisSearchTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "IrisCommonTests",
+        "name" : "IrisCommonTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "DigesterTests",
+        "name" : "DigesterTests"
+      }
+    }
+  ],
+  "version" : 1
+}
