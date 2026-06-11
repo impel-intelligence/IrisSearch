@@ -76,17 +76,16 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         
         let contentType: Int = row[Columns.contentType]
         
-        let textContent: String = row[Columns.textContent]
-        let dataContent: Data = row[Columns.dataContent]
+        let textContent: String? = row[Columns.textContent]
+        let dataContent: Data? = row[Columns.dataContent]
         
         switch EmbeddableContent.ContentType(rawValue: contentType) {
         case .text:
-            guard !textContent.isEmpty else { throw PieceLoadingError.noText }
+            guard let textContent else { throw PieceLoadingError.noText }
             self.content = .text(content: textContent)
         case .image:
-            guard !dataContent.isEmpty else { throw PieceLoadingError.noData }
-            let caption = !textContent.isEmpty ? textContent : nil
-            self.content = .image(content: dataContent, caption: caption)
+            guard let dataContent else { throw PieceLoadingError.noData }
+            self.content = .image(content: dataContent, caption: textContent)
         case .none:
             throw PieceLoadingError.noValidContent
         }
@@ -107,9 +106,10 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         switch content {
         case .text(let content):
             container[Columns.textContent] = content
+            container[Columns.dataContent] = nil
         case .image(let content, let caption):
             container[Columns.dataContent] = content
-            container[Columns.textContent] = caption ?? ""
+            container[Columns.textContent] = caption ?? nil
         }
         
         let embeddingData: Data = embeddings.withUnsafeBytes({ Data($0) })
