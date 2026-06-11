@@ -29,6 +29,5 @@ extension FileDigester {
         guard FileManager.default.isReadableFile(atPath: url.path(percentEncoded: false)) else { throw DigestionError.fileNotReadable }
         guard let fileType = UTType(filenameExtension: url.pathExtension) else { throw DigestionError.incorrectExtension }
         guard fileTypes.contains(fileType) else { throw DigestionError.fileTypeNotValid(type: fileType)}
-
     }
 }

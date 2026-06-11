@@ -65,8 +65,8 @@ final class IrisDB {
             try db.create(table: "document_pieces") { table in
                 table.autoIncrementedPrimaryKey("id")
                 table.column("contentType", .integer).notNull()
-                table.column("textContent", .text).notNull()
-                table.column("dataContent", .blob).notNull()
+                table.column("textContent", .text)
+                table.column("dataContent", .blob)
                 table.column("embeddings", .blob).notNull()
                 
                 table.column("parentID", .integer).notNull()
@@ -141,8 +141,17 @@ extension IrisDB {
         let document = try await createDocumentObject(uuid: uuid, embeddableContent: embeddableContent)
 
         // Insert the document into the database, capturing the inserted record (with its assigned rowID).
-        let insertedDocument = try await dbQueue.write { [document] db in
-            try document.inserted(db)
+        let insertedDocument = try await dbQueue.write { db in
+            var document = document
+            try document.insert(db)
+            
+            // Insert document places directly from the document's mutable piece array
+            for index in document.pieces.indices {
+                document.pieces[index].parentID = document.id
+                try document.pieces[index].insert(db)
+            }
+            
+            return document
         }
 
         try textIndex.addDocument(document: insertedDocument)
@@ -154,7 +163,9 @@ extension IrisDB {
         let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         
         return try await dbQueue.read { db in
-            return try IrisDocument.fetchOne(db, key: ["uuid": uuid])
+            guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
+            document.pieces = try document.request(for: IrisDocument.pieces).fetchAll(db)
+            return document
         }
     }
     
@@ -172,6 +183,15 @@ extension IrisDB {
             newDocument.id = existingDocument.id // Update the ID to match the existing document.
 
             try newDocument.update(db)
+            
+            // Delete all existing document pieces
+            try newDocument.request(for: IrisDocument.pieces).deleteAll(db)
+            
+            // Re-insert the document pieces in-place
+            for index in newDocument.pieces.indices {
+                newDocument.pieces[index].parentID = newDocument.id
+                try newDocument.pieces[index].insert(db)
+            }
 
             return newDocument
         }
