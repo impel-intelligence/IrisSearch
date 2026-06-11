@@ -22,6 +22,11 @@ enum PDFDigestionError: Error {
 }
 
 class PDFDigester: FileDigester {
+    struct RenderedPage: Sendable {
+        let index: Int
+        let image: CGImage
+    }
+    
     static let fileTypes: [UTType] = [.pdf, UTType("com.adobe.pdf")!]
     
     /// Render PDF pages to CGImages
@@ -29,15 +34,19 @@ class PDFDigester: FileDigester {
     ///
     /// - Parameter document: the PDFDocument to render from
     /// - Returns: A set of CGImages for each page in the PDF, rendered at the same size they are in the PDF.
-    func renderPages(from document: PDFDocument) async throws -> [CGImage] {
+    func renderPages(from document: PDFDocument) async throws -> [RenderedPage] {
         // A wrapper struct that puts a PDF page into a "sendable" struct so it can pass the task boundary. Unsafe, but we don't need to worry since we never modify the data, just read.
         struct SendablePage: @unchecked Sendable {
             let page: PDFPage
+            let index: Int
         }
         
-        let pages = (0..<document.pageCount).compactMap { document.page(at: $0) }.map { SendablePage(page: $0) }
-        
-        return try await withThrowingTaskGroup(of: CGImage?.self) { group in
+        let pages: [SendablePage] = (0..<document.pageCount).compactMap { index in
+            guard let page = document.page(at: 0) else { return nil }
+            return SendablePage(page: page, index: index)
+        }
+                
+        return try await withThrowingTaskGroup(of: RenderedPage?.self) { group in
             for wrapper in pages {
                 group.addTask {
                     let page = wrapper.page
@@ -54,19 +63,20 @@ class PDFDigester: FileDigester {
                     ) else { return nil }
                     
                     page.draw(with: .mediaBox, to: context)
-                    return context.makeImage()
+                    guard let image = context.makeImage() else { return nil }
+                    return RenderedPage(index: wrapper.index, image: image)
                 }
             }
             
-            var images: [CGImage] = []
+            var renderedPages: [RenderedPage] = []
             
             // Gather results as they finish
             for try await result in group {
-                guard let image = result else { continue }
-                images.append(image)
+                guard let page = result else { continue }
+                renderedPages.append(page)
             }
             
-            return images
+            return renderedPages
         }
     }
     
@@ -85,11 +95,11 @@ class PDFDigester: FileDigester {
             contentPieces.append(.text(content: content))
         }
         
-        let pageImages = try await renderPages(from: pdfDocument)
+        let renderedPages = try await renderPages(from: pdfDocument)
         
-        for (index, page) in pageImages.enumerated() {
-            guard let jpgData = page.jpgData else { continue }
-            contentPieces.append(.image(content: jpgData, caption: "Page \(index) of PDF"))
+        for page in renderedPages {
+            guard let jpgData = page.image.jpgData else { continue }
+            contentPieces.append(.image(content: jpgData, caption: "Page \(page.index) of PDF"))
         }
 
         return contentPieces

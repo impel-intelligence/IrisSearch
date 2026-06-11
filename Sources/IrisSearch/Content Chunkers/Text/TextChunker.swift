@@ -1,10 +1,12 @@
 //
-//  ContentChunker.swift
+//  TextChunker.swift
 //  IrisSearch
 //
 //  Created by Taylor Lineman on 6/7/26.
 //
 
-protocol ContentChunker {
+import IrisCommon
+
+protocol TextChunker {
     func chunk(content: String) -> [String]
 }
