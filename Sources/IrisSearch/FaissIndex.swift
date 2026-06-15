@@ -163,3 +163,53 @@ extension FaissIndex {
     }
 }
 
+// MARK: Searching
+extension FaissIndex {
+    
+    /// Search the FaissIndex with an embedded query.
+    /// - Parameters:
+    ///   - normalizedQuery: The query embedding, normalized using a Faiss normalization function.
+    ///   - k: The number of results to request.
+    /// - Returns: The IDs for found documents.
+    func search(normalizedQuery: [Float], kItems k: Int) throws -> [Int] {
+        let index: IDMap = try getGlobalIndex()
+        
+        let searchResults = try index.search([normalizedQuery], k: k)
+        let ids = searchResults.labels.flatMap { $0 }
+        
+        return ids
+    }
+    
+//    private func translateLabels(labels: [Int], documents: [Document]) throws -> [Document] {
+//        var resultingDocuments: [Document] = []
+//
+//        let documentsCount = documents.count
+//        for index in labels where (index < documentsCount && index >= 0) {
+//            resultingDocuments.append(documents[index])
+//        }
+//
+//        return resultingDocuments
+//    }
+    
+//    public func search(query: [Float], amount: Int) throws -> [Document] {
+//        var query = query
+//        faiss_fvec_renorm_L2(vectorDimensions, 1, &query)
+//        
+//        let indexPackage = try retrieveIndexAll()
+//        let labels = try self.searchIndex(index: indexPackage.index, query: query, amount: amount)
+//        let resultingDocuments = try translateLabels(labels: labels, documents: indexPackage.documents)
+//        
+//        return resultingDocuments
+//    }
+//    
+//    public func search(in collection: Collection, query: [Float], amount: Int) throws -> [Document] {
+//        var query = query
+//        faiss_fvec_renorm_L2(vectorDimensions, 1, &query)
+//        
+//        let indexPackage = try retrieveIndex(for: collection)
+//        let labels = try self.searchIndex(index: indexPackage.index, query: query, amount: amount)
+//        let resultingDocuments = try translateLabels(labels: labels, documents: indexPackage.documents)
+//        
+//        return resultingDocuments
+//    }
+}
