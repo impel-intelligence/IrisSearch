@@ -53,7 +53,6 @@ final class FaissIndex {
         
         try removeDocumentFromGlobalIndex(document: document)
     }
-    
 }
 
 // MARK: Index Management
@@ -94,10 +93,10 @@ extension FaissIndex {
         var embeddings: [[Float]] = []
         var ids: [Int] = []
         
-//        for embedding in document.embeddings {
-//            embeddings.append(embedding)
-//            ids.append(Int(documentID))
-//        }
+        for embedding in document.pieces.map(\.embeddings) {
+            embeddings.append(embedding)
+            ids.append(Int(documentID))
+        }
         
         // Check if the index needs to be trained, if so train.
         if !index.isTrained {
@@ -120,10 +119,10 @@ extension FaissIndex {
         for document in documents {
             guard let documentID = document.id else { continue }
             // For each embedding in the document, add it with the document's rowID as its ID
-//            for embedding in document.embeddings {
-//                embeddings.append(embedding)
-//                ids.append(Int(documentID))
-//            }
+            for embedding in document.pieces.map(\.embeddings) {
+                embeddings.append(embedding)
+                ids.append(Int(documentID))
+            }
         }
         
         let index: IDMap = try getGlobalIndex()
@@ -150,13 +149,15 @@ extension FaissIndex {
         // Use a flat index for single document indices as we do not need anything faster.
         let index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
         
+        let embeddings = document.pieces.map(\.embeddings)
+        
         // Check if the index needs to be trained, if so train.
         if !index.isTrained {
-//            try index.train(document.embeddings)
+            try index.train(embeddings)
         }
         
         // Add the data to the index
-//        try index.add(document.embeddings)
+        try index.add(embeddings)
         
         try index.saveToFile(indexURL.path(percentEncoded: false))
     }
