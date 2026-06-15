@@ -80,7 +80,6 @@ final class IrisDB {
             }
         }
         
-        
         let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         try migrator.migrate(dbQueue)
     }
@@ -215,5 +214,38 @@ extension IrisDB {
         if let tmpDocument {
             try textIndex.removeDocument(document: tmpDocument)
         }
+    }
+}
+
+struct IrisQuery {
+    let text: String
+    // imageData: Data
+}
+
+// MARK: Search
+extension IrisDB {
+    public func search(query: IrisQuery, kItems: Int = 5) async throws {
+        // Text index searching
+        var textEmbedding = try await textEmbedder.embed(content: query.text).map({Float($0)})
+        faiss_fvec_renorm_L2(textEmbedder.dimension, 1, &textEmbedding)
+        
+        let textIds = try textIndex.search(normalizedQuery: textEmbedding, kItems: kItems)
+        
+        // Image index searching
+        
+        // Database Search
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
+        
+        try await dbQueue.read { db in
+            let pattern = FTS5Pattern(matchingAnyTokenIn: query.text)
+
+            // Search with the query interface or SQL
+            let documents = try IrisDocument.matching(pattern).fetchAll(db)
+
+            
+            
+        }
+
+
     }
 }

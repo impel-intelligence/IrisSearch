@@ -40,7 +40,13 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
-        .testTarget(name: "IrisSearchTests", dependencies: ["IrisSearch"]),
+        .testTarget(
+            name: "IrisSearchTests",
+            dependencies: ["IrisSearch"],
+            resources: [
+                .copy("Test Documents")
+            ]
+        ),
         
         // Digester
         .target(

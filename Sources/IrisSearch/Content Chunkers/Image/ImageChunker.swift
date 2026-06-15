@@ -8,5 +8,5 @@
 import Foundation
 
 protocol ImageChunker {
-    func chunk(images: [Data], chunkDimensions: CGRect) -> [String]
+    func chunk(images: [Data], chunkDimensions: CGRect) -> [Data]
 }
