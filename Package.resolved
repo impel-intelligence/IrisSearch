@@ -1,5 +1,5 @@
 {
-  "originHash" : "5e50a31639707a14c8a560775a01e602ffa58932d3f2a407feae9132fef3f77f",
+  "originHash" : "81135900151644384ff279fec73018dc1462f0ba769b62387639fc7bafad6944",
   "pins" : [
     {
       "identity" : "faissmobile",
@@ -8,15 +8,6 @@
       "state" : {
         "revision" : "9d5b9925305eea9398cc92ce4a8e51c8a4b043af",
         "version" : "0.0.1"
-      }
-    },
-    {
-      "identity" : "grdb.swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/groue/GRDB.swift",
-      "state" : {
-        "revision" : "9ed8c8457e00ff9c7aedb3bf213f20a2cfdf509e",
-        "version" : "7.11.0"
       }
     },
     {

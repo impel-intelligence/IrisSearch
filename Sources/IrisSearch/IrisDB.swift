@@ -73,8 +73,11 @@ final class IrisDB {
                 table.foreignKey(["parentID"], references: "documents", onDelete: .cascade)
             }
 
-            try db.create(virtualTable: "documents_ft", using: FTS5()) { table in
+            try db.create(virtualTable: "document_pieces_ft", using: FTS4()) { table in
+                table.tokenizer = .porter
+                
                 table.synchronize(withTable: "document_pieces")
+                table.column("id")
                 table.column("parentID")
                 table.column("textContent")
             }
@@ -229,23 +232,24 @@ extension IrisDB {
         var textEmbedding = try await textEmbedder.embed(content: query.text).map({Float($0)})
         faiss_fvec_renorm_L2(textEmbedder.dimension, 1, &textEmbedding)
         
-        let textIds = try textIndex.search(normalizedQuery: textEmbedding, kItems: kItems)
+        let semanticTextIds = try textIndex.search(normalizedQuery: textEmbedding, kItems: kItems)
         
         // Image index searching
         
         // Database Search
         let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         
-        try await dbQueue.read { db in
-            let pattern = FTS5Pattern(matchingAnyTokenIn: query.text)
+        // TODO: Need to setup a custom FTS5 build of sqlite. May need to switch IrisSearch to a full XCode project instead of SwiftPM.
+        let syntacticTextIds = try await dbQueue.read { db in
+            let pattern = FTS3Pattern(matchingAnyTokenIn: query.text)
 
             // Search with the query interface or SQL
-            let documents = try IrisDocument.matching(pattern).fetchAll(db)
-
-            
-            
+            let documents = try SearchableDocumentPiece.matching(pattern).fetchAll(db)
+            return documents.compactMap({$0.parentID})
         }
 
+        // Rank documents by how often they showed in any of the searches.
+        // Rank documents using BM25.
 
     }
 }

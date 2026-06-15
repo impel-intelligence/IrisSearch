@@ -19,14 +19,16 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.2.0"),
-        .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0")
+//        .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0")
+        .package(path: "GRDB")
     ],
     targets: [
         // Common
         .target(
             name: "IrisCommon",
             dependencies: [
-                .product(name: "GRDB", package: "GRDB.swift")
+                "GRDB"
+//                .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
         .testTarget(name: "IrisCommonTests", dependencies: ["IrisCommon"]),
@@ -37,7 +39,8 @@ let package = Package(
             dependencies: [
                 "IrisCommon",
                 "SwiftFaiss",
-                .product(name: "GRDB", package: "GRDB.swift")
+                "GRDB"
+//                .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
         .testTarget(
