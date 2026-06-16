@@ -26,9 +26,14 @@ final class FaissIndex {
         }
     }
     
+
     private var embeddingProvider: EmbeddingProvider
     
     private var indexLocation: URL
+    
+    var cachedGlobalIndex: IDMap?
+    
+    var cachedDocumentIndices: [UUID: FlatIndex] = [:]
     
     init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws {
         self.indexLocation = indexLocation
@@ -52,21 +57,42 @@ final class FaissIndex {
         try FileManager.default.removeItem(at: indexURL)
         
         try removeDocumentFromGlobalIndex(document: document)
+        // Remove the cached index for the document.
+        cachedDocumentIndices.removeValue(forKey: document.uuid)
     }
 }
 
 // MARK: Index Management
-extension FaissIndex {
+extension FaissIndex {    
     private func getGlobalIndex() throws -> IDMap {
         let indexURL = IndexLocation.global.filePath(in: indexLocation)
         
-        if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)),
-           let flatIndex = try? IDMap.from(indexURL.path(percentEncoded: false)) {
-            return flatIndex
-        } else {
-            let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
-            return try IDMap(subIndex: coreIndex)
+        // Quick exit with the cached global index
+        if let cachedGlobalIndex {
+            return cachedGlobalIndex
         }
+        
+        if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)),
+           let idMap = try? IDMap.from(indexURL.path(percentEncoded: false)) {
+            cachedGlobalIndex = idMap
+            return idMap
+        } else {
+            let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .innerProduct)
+            let idMap = try IDMap(subIndex: coreIndex)
+            cachedGlobalIndex = idMap
+            return idMap
+        }
+    }
+    
+    private func getDocumentIndex(uuid: UUID) throws -> FlatIndex {
+        if let index = cachedDocumentIndices[uuid] {
+            return index
+        }
+        
+        // Use a flat index for single document indices as we do not need anything faster.
+        let index = try FlatIndex(d: embeddingProvider.dimension, metricType: .innerProduct)
+        cachedDocumentIndices[uuid] = index
+        return index
     }
     
     private func removeDocumentFromGlobalIndex(document: IrisDocument) throws {
@@ -93,7 +119,8 @@ extension FaissIndex {
         var embeddings: [[Float]] = []
         var ids: [Int] = []
         
-        for embedding in document.pieces.map(\.embeddings) {
+        for var embedding in document.pieces.map(\.embeddings) {
+            faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embedding)
             embeddings.append(embedding)
             ids.append(Int(documentID))
         }
@@ -119,7 +146,8 @@ extension FaissIndex {
         for document in documents {
             guard let documentID = document.id else { continue }
             // For each embedding in the document, add it with the document's rowID as its ID
-            for embedding in document.pieces.map(\.embeddings) {
+            for var embedding in document.pieces.map(\.embeddings) {
+                faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embedding)
                 embeddings.append(embedding)
                 ids.append(Int(documentID))
             }
@@ -147,10 +175,14 @@ extension FaissIndex {
         }
         
         // Use a flat index for single document indices as we do not need anything faster.
-        let index = try FlatIndex(d: embeddingProvider.dimension, metricType: .l2)
+        let index = try getDocumentIndex(uuid: document.uuid)
         
-        let embeddings = document.pieces.map(\.embeddings)
+        var embeddings = document.pieces.map(\.embeddings)
         
+        for index in 0..<embeddings.count {
+            faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embeddings[index])
+        }
+
         // Check if the index needs to be trained, if so train.
         if !index.isTrained {
             try index.train(embeddings)
@@ -168,13 +200,16 @@ extension FaissIndex {
     
     /// Search the FaissIndex with an embedded query.
     /// - Parameters:
-    ///   - normalizedQuery: The query embedding, normalized using a Faiss normalization function.
+    ///   - query: The query embedding.
     ///   - k: The number of results to request.
     /// - Returns: The IDs for found documents.
-    func search(normalizedQuery: [Float], kItems k: Int) throws -> [Int] {
+    func search(query: [Float], kItems k: Int) throws -> [Int] {
+        var query = query
+        faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &query)
+
         let index: IDMap = try getGlobalIndex()
         
-        let searchResults = try index.search([normalizedQuery], k: k)
+        let searchResults = try index.search([query], k: k)
         let ids = searchResults.labels.flatMap { $0 }
         
         return ids

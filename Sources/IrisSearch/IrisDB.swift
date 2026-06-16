@@ -124,7 +124,6 @@ extension IrisDB {
             
             for chunk in chunkedContent {
                 var chunkEmbedding: [Float] = try await embedChunk(chunk)
-                faiss_fvec_renorm_L2(textEmbedder.dimension, 1, &chunkEmbedding)
                 
                 let piece = DocumentPiece(content: chunk, embeddings: chunkEmbedding)
                 pieces.append(piece)
@@ -238,35 +237,34 @@ extension IrisDB {
         
         // Text index searching
         var textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
-        faiss_fvec_renorm_L2(textEmbedder.dimension, 1, &textEmbedding)
-        
-        let semanticTextIds = try textIndex.search(normalizedQuery: textEmbedding, kItems: kItems)
+
+        let semanticTextIds = try textIndex.search(query: textEmbedding, kItems: kItems)
         
         // Image index searching
         
         // Database Search
-//        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-//  
-//        // TODO: Need to setup a custom FTS5 build of sqlite. May need to switch IrisSearch to a full XCode project instead of SwiftPM.
-//        let syntacticTextDocuments: [SearchableDocumentPiece] = (try await dbQueue.read { db in
-//            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
-//                return [] // Empty array, except swift type checking does not like just returning [].
-//            }
-//            
-//            // Search with the query interface or SQL and rank using internal BM25 function.
-//            let documents = try SearchableDocumentPiece
-//                .matching(pattern)
-//                .select(Column("id"), Column("textContent"), Column("parentID"), Column.rank)
-//                .order(Column.rank)
-//                .fetchAll(db)
-//
-//            return documents
-//        })
-//        
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
+  
+        // TODO: Need to setup a custom FTS5 build of sqlite. May need to switch IrisSearch to a full XCode project instead of SwiftPM.
+        let syntacticTextDocuments: [SearchableDocumentPiece] = (try await dbQueue.read { db in
+            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
+                return [] // Empty array, except swift type checking does not like just returning [].
+            }
+            
+            // Search with the query interface or SQL and rank using internal BM25 function.
+            let documents = try SearchableDocumentPiece
+                .matching(pattern)
+                .select(Column("id"), Column("textContent"), Column("parentID"), Column.rank)
+                .order(Column.rank)
+                .fetchAll(db)
+
+            return documents
+        })
+        
 //        print("Semantic: \(semanticTextIds)")
 //        print("Syntactic: \(syntacticTextDocuments)")
 
-        return semanticTextIds// + syntacticTextDocuments.compactMap({Int($0.parentID)})
+        return semanticTextIds + syntacticTextDocuments.compactMap({Int($0.parentID)})
         
     }
 }

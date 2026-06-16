@@ -29,9 +29,10 @@ class SearchIntegrationTests {
 //            try await database.createDocument(uuid: UUID(), embeddableContent: digest)
 //            print("[\(index) - \(paperName)] Added \(digest.count) pieces")
 //        }
-        
+        let query = IrisQuery(text: "Binary Search")
+
         try await measurePerformance {
-            _ = try await database.search(query: .init(text: "Binary Search"), kItems: 10)
+            _ = try await database.search(query: query, kItems: 10)
         }
     }
     
