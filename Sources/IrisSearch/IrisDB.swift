@@ -233,7 +233,7 @@ struct IrisQuery {
 
 // MARK: Search
 extension IrisDB {
-    public func search(query: IrisQuery, kItems: Int = 10) async throws -> [Int] {
+    public func search(query: IrisQuery, nItems: Int = 10) async throws -> [IrisDocument] {
         let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
         
         let numDocuments = try await dbQueue.read { db in
@@ -244,12 +244,15 @@ extension IrisDB {
             throw IrisDBError.noDocuments
         }
         
+        // Search for twice as many documents as the user requested to give better ranking down the line.
+        let searchLimit = (nItems * 2).clamped(to: 0...numDocuments)
+        
         let unicodeNormalizedQuery = query.text.precomposedStringWithCompatibilityMapping
         
         // Text index searching
         let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
 
-        let semanticTextIds = try textIndex.search(query: textEmbedding, kItems: kItems)
+        let semanticTextIds = try textIndex.search(query: textEmbedding, kItems: searchLimit)
         
         // Image index searching
         
@@ -262,31 +265,45 @@ extension IrisDB {
             // Search with the query interface or SQL and rank using internal BM25 function.
             let documents = try SearchableDocumentPiece
                 .matching(pattern)
-                .select(Column("id"))
+                .select(Column("id"), Column("textContent"), Column("parentID"), Column.rank)
                 .order(Column.rank)
-                .limit(kItems)
+                .limit(searchLimit)
                 .fetchAll(db)
 
             return documents
         })
+        
+        // Take just the document ids from the searched document pieces.
         let syntacticTextIds = syntacticTextDocuments.map({Int($0.id)})
         
+        // Rank the document IDs using Reciprocal Ranked Fusion.
+        let rankedDocumentIDs: [Int] = ReciprocalRankedFusion.rank(inputs: [semanticTextIds, syntacticTextIds])
         
+        // Grab all of the documents we found from the database, they will be sorted back into rank next.
+        let searchedDocuments = try await dbQueue.read { db in
+            return try IrisDocument.filter(rankedDocumentIDs.contains(Column("id"))).fetchAll(db)
+        }
         
-//        scores = defaultdict(float)
-//        for results in ranked_lists:           # e.g. [bm25_ids, vector_ids]
-//                for rank, doc_id in enumerate(results, start=1):
-//                    scores[doc_id] += 1.0 / (k + rank)
-//                return sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
-//        let allIDs = semanticTextIds + syntacticTextDocuments.compactMap({Int($0.parentID)})
-//        
-//        let sortedByOccurrence = Dictionary(allIDs.map { ($0, 1) }, uniquingKeysWith: +).sorted { lhs, rhs in
-//            lhs.value > rhs.value
-//        }
+        // A map from id -> rank position for O(1) rank lookup.
+        let rankByID: [Int: Int] = Dictionary(uniqueKeysWithValues: rankedDocumentIDs.enumerated().map { ($1, $0) })
         
+        // Pre-size an array for ordered results and place docs directly by rank
+        var orderedByRank = Array<IrisDocument?>(repeating: nil, count: rankByID.count)
         
-        return semanticTextIds + syntacticTextDocuments.compactMap({Int($0.parentID)})
+        // O(n) loop over the retrieved documents, placing each document into the array at its rank position.
+        for doc in searchedDocuments {
+            if let rawID = doc.id, let rank = rankByID[Int(rawID)] , rank < orderedByRank.count {
+                orderedByRank[rank] = doc
+            }
+        }
         
+        // Compact the rank order list, to remove an documents that were not found.
+        let compactOrdered = orderedByRank.compactMap { $0 }
+        
+        print(compactOrdered.map({$0.id}), rankedDocumentIDs)
+        // Limit the kItems the user requested to the number of documents we found.
+        let limit = nItems.clamped(to: 0...compactOrdered.count)
+        return Array(compactOrdered.prefix(upTo: limit))
     }
 }
+

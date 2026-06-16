@@ -6,5 +6,5 @@
 //
 
 protocol FusionAlgorithm {
-    func rank(inputs: [[Int]]) -> [Int]
+    static func rank(inputs: [[Int]]) -> [Int]
 }

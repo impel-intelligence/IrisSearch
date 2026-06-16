@@ -28,7 +28,7 @@ class IrisDB_SearchTests {
         try await database.createDocument(uuid: UUID(), embeddableContent: [.text(content: "Sharks!")])
         
         try await measurePerformance {
-            _ = try await database.search(query: .init(text: "original"), kItems: 2)
+            _ = try await database.search(query: .init(text: "original"), nItems: 2)
         }
     }
     
@@ -40,16 +40,23 @@ class IrisDB_SearchTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let sonnetURL = Bundle.module.url(forResource: "Sonnets", withExtension: nil, subdirectory: "Test Documents")!
-        let sonnets = try FileManager.default.contentsOfDirectory(atPath: sonnetURL.path(percentEncoded: false))
+        let sonnetPaths = try FileManager.default.contentsOfDirectory(atPath: sonnetURL.path(percentEncoded: false))
         
-        for sonnet in sonnets {
-            let url = sonnetURL.appendingPathComponent(sonnet, conformingTo: .plainText)
-            let content = try String(contentsOf: url, encoding: .utf8)
-            try await database.createDocument(uuid: UUID(), embeddableContent: [.text(content: content)])
-        }
+        var sonnets: [UUID: String] = [:]
         
-        try await measurePerformance {
-            _ = try await database.search(query: .init(text: "Music and sadness"), kItems: 2)
+        let loadingTime = try await ContinuousClock().measure {
+            for sonnet in sonnetPaths {
+                let url = sonnetURL.appendingPathComponent(sonnet, conformingTo: .plainText)
+                let content = try String(contentsOf: url, encoding: .utf8)
+                let uuid = UUID()
+                sonnets[uuid] = content
+                try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
+            }
         }
+        print("Loaded Documents in \(loadingTime)")
+        
+        let kItems = 10
+        let documents = try await database.search(query: .init(text: "sad music"), nItems: kItems)
+        #expect(documents.count == kItems)        
     }
 }
