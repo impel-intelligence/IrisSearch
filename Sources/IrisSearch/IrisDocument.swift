@@ -50,7 +50,11 @@ struct SearchableDocumentPiece: Codable, FetchableRecord, PersistableRecord {
     public var parentID: Int64
 }
 
+/// A piece of a greater `IrisDocument`.
+///
+/// These pieces are constructed based on content chunks provided by `Digesters` or by either a ``TextChunker`` or ``ImageChunker``.
 public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePersistableRecord {
+    /// The SQL columns that piece data is actually saved into.
     public enum Columns {
         static let id = Column("id")
         static let contentType = Column("contentType")
@@ -68,13 +72,23 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
     
     public static let databaseTableName = "document_pieces"
     
+    /// The many-to-one relationship between ``DocumentPiece`` and ``IrisDocument``
     static let parent = belongsTo(IrisDocument.self)
     
+    /// An SQL unique row identifier for this document piece.
     public var id: Int64? = nil
+    /// The content that this piece contains. Will be split into the columns `textContent` and `dataContent` when saved into the SQL database.
     public let content: EmbeddableContent
+    /// The semantic embedding for the ``EmbeddableContent``.
     public let embeddings: [Float]
+    /// The ID of the parent ``IrisDocument`` that this piece belongs to.
     public var parentID: Int64?
     
+    /// Create a Document Piece that has not been inserted into a GRDB database yet.
+    /// - Parameters:
+    ///   - content: The ``EmbeddableContent`` that this piece represents.
+    ///   - embeddings: An embedding that represents the semantic content of the `content`.
+    ///   - parentID: The id for the parent ``IrisDocument``
     public init(content: EmbeddableContent, embeddings: [Float], parentID: Int64? = nil) {
         self.content = content
         self.embeddings = embeddings
