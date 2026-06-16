@@ -58,7 +58,7 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:.swiftpm/IrisSearch-Package.xctestplan"
+            reference = "container:Default.xctestplan"
             default = "YES">
          </TestPlanReference>
       </TestPlans>

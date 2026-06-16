@@ -16,7 +16,7 @@ let package = Package(
         .library(name: "Digester", targets: ["Digester"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.3.0"),
+        .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.3.1"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0")
     ],
     targets: [
@@ -27,8 +27,15 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
-        .testTarget(name: "IrisCommonTests", dependencies: ["IrisCommon"]),
+        .testTarget(name: "IrisCommonTests", dependencies: ["IrisCommon", "TestUtilities"]),
         
+        // Test Utilities
+        .target(
+            name: "TestUtilities",
+            dependencies: ["IrisCommon", "IrisSearch"],
+            path: "Tests/Utilities" // Placed inside the Tests folder to keep Sources clean
+        ),
+
         // Search
         .target(
             name: "IrisSearch",
@@ -41,7 +48,8 @@ let package = Package(
         .testTarget(
             name: "IrisSearchTests",
             dependencies: [
-                "IrisSearch"
+                "IrisSearch",
+                "TestUtilities"
             ],
             resources: [
                 .copy("Test Documents")
@@ -55,7 +63,10 @@ let package = Package(
         ),
         .testTarget(
             name: "DigesterTests",
-            dependencies: ["Digester"],
+            dependencies: [
+                "Digester",
+                "TestUtilities"
+            ],
             resources: [
                 .copy("Test Documents")
             ]
@@ -64,7 +75,11 @@ let package = Package(
         // Integration Tests
         .testTarget(
             name: "IntegrationTests",
-            dependencies: ["Digester", "IrisSearch"],
+            dependencies: [
+                "Digester",
+                "IrisSearch",
+                "TestUtilities"
+            ],
             resources: [
                 .copy("Test Documents")
             ]

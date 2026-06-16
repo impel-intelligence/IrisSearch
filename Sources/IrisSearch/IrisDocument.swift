@@ -145,4 +145,11 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
     public mutating func didInsert(_ inserted: InsertionSuccess) {
         self.id = inserted.rowID
     }
+}
+
+extension DocumentPiece {
+    public var text: String? {
+        if case .text(let content) = content { return content }
+        return nil
     }
+}

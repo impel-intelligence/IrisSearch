@@ -12,6 +12,7 @@ import Foundation
 import SwiftFaiss
 import SwiftFaissC
 import GRDB
+import TestUtilities
 
 class IrisDB_DeletionTests {
     
@@ -23,7 +24,7 @@ class IrisDB_DeletionTests {
         
         let uuid = UUID()
         let content = "Test content"
-        let document = try await database.createDocument(uuid: uuid, embeddableContent: textContent(content))
+        let document = try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
         
         try await database.deleteDocument(uuid: document.uuid)
         
