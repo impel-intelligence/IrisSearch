@@ -18,15 +18,16 @@ class TestingDirectories {
     //    let imageIndexURL: URL
     
     init() {
-        baseURL = FileManager.default.temporaryDirectory.appending(path: "tmp-database-\(UUID())")
+        baseURL = FileManager.default.temporaryDirectory.appending(path: "tmp-database-039B1985-44EE-483C-9808-21FE954C4D93")
         bundleURL = baseURL.appendingPathComponent("\(databaseName).irisdb")
         sqliteURL = bundleURL.appending(path: "map.sqlite")
         textIndexURL = bundleURL.appending(path: "text-index")
+        print(baseURL)
         //        imageIndexURL = bundleURL.appending(path: "image-index")
     }
     
     deinit {
-        try? FileManager.default.removeItem(at: baseURL)
+//        try? FileManager.default.removeItem(at: baseURL)
     }
 }
 
@@ -42,7 +43,6 @@ extension DocumentPiece {
         return nil
     }
 }
-
 
 func measurePerformance(nRuns: Int = 100, _ block: @escaping () async throws -> Void) async rethrows {
     let throwAwayRuns = nRuns / 10

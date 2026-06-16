@@ -23,7 +23,7 @@ import NaturalLanguage
 @Test("The embedding dimension should not be 0")
 func embeddingDimension() async throws {
     let embedder = try NLEmbedder(language: .english)
-    
+
     #expect(embedder.dimension != 0, "Dimensions should be a valid size.")
 }
 

@@ -29,6 +29,12 @@ class PDFDigester: FileDigester {
     
     static let fileTypes: [UTType] = [.pdf, UTType("com.adobe.pdf")!]
     
+    var processImages: Bool
+    
+    init(processImages: Bool = true) {
+        self.processImages = processImages
+    }
+    
     /// Render PDF pages to CGImages
     /// This runs fairly quickly, with a 200 page document taking around ​0.13 seconds. It is not instead, but fairly close.
     ///
@@ -90,10 +96,19 @@ class PDFDigester: FileDigester {
         
         var contentPieces: [EmbeddableContent] = []
         
-        // Extract all of the text in the PDF for text based searching.
-        if let content = pdfDocument.string {
+        for index in 0..<pdfDocument.pageCount {
+            let page = pdfDocument.page(at: index)
+            guard let pageContent = page?.string else { continue }
+            contentPieces.append(.text(content: pageContent))
+        }
+        
+        // If per-page string extraction failed, extract all of the text in the PDF.
+        if contentPieces.isEmpty, let content = pdfDocument.string {
             contentPieces.append(.text(content: content))
         }
+        
+        // If we aren't processing images, back out early and return the existing content
+        guard processImages else { return contentPieces }
         
         let renderedPages = try await renderPages(from: pdfDocument)
         

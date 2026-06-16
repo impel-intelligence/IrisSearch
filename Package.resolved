@@ -1,15 +1,6 @@
 {
-  "originHash" : "da02031f1e383b85c7abbdb768f2a73e0c8f79966c0f82474f4283d67fde88cc",
+  "originHash" : "c4edd6b470f0d2f6d2c71ce6b094865d9aae3f032eeb45ed13e69c61ad4b8b01",
   "pins" : [
-    {
-      "identity" : "faissmobile",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/jkrukowski/FaissMobile",
-      "state" : {
-        "revision" : "9d5b9925305eea9398cc92ce4a8e51c8a4b043af",
-        "version" : "0.0.1"
-      }
-    },
     {
       "identity" : "grdb.swift",
       "kind" : "remoteSourceControl",
@@ -20,39 +11,12 @@
       }
     },
     {
-      "identity" : "swift-memory-allocation",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/coenttb/swift-memory-allocation",
-      "state" : {
-        "revision" : "afe7e86f16981007b841470d5ea79f0026868bc3",
-        "version" : "0.2.0"
-      }
-    },
-    {
-      "identity" : "swift-numerics",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-numerics",
-      "state" : {
-        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
-        "version" : "1.1.1"
-      }
-    },
-    {
-      "identity" : "swift-testing-performance",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/coenttb/swift-testing-performance",
-      "state" : {
-        "revision" : "1a1967f7acfcb081e57122db463817c142cc7186",
-        "version" : "0.3.1"
-      }
-    },
-    {
       "identity" : "swiftfaiss",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/impel-intelligence/SwiftFaiss",
       "state" : {
-        "revision" : "eb5072e4ab267203b99cadc447396f07712c8f41",
-        "version" : "0.2.0"
+        "revision" : "4e3fae6f7b4bddf279892d5025bbd9424f0a920f",
+        "version" : "0.3.0"
       }
     }
   ],

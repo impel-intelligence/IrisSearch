@@ -34,11 +34,11 @@ class IrisDB_SearchTests {
     }
     
     @Test()
-    func loadedSearch() async throws {
+    func sonnetSearch() async throws {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        nonisolated(unsafe) let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let sonnetURL = Bundle.module.url(forResource: "Sonnets", withExtension: nil, subdirectory: "Test Documents")!
         let sonnets = try FileManager.default.contentsOfDirectory(atPath: sonnetURL.path(percentEncoded: false))
@@ -53,7 +53,8 @@ class IrisDB_SearchTests {
             _ = try await database.search(query: .init(text: "original"), kItems: 2)
         }
     }
-    func measurePerformance(nRuns: Int = 100, _ block: @escaping @Sendable () async throws -> Void) async rethrows {
+    
+    func measurePerformance(nRuns: Int = 100, _ block: @escaping () async throws -> Void) async rethrows {
         let throwAwayRuns = nRuns / 10
         
         // Warmup the function

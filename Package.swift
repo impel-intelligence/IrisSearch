@@ -16,9 +16,8 @@ let package = Package(
         .library(name: "Digester", targets: ["Digester"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.2.0"),
-        .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
-        .package(url: "https://github.com/coenttb/swift-testing-performance", from: "0.1.2")
+        .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.3.0"),
+        .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0")
     ],
     targets: [
         // Common
@@ -60,6 +59,15 @@ let package = Package(
             resources: [
                 .copy("Test Documents")
             ]
-        )
+        ),
+        
+        // Integration Tests
+        .testTarget(
+            name: "IntegrationTests",
+            dependencies: ["Digester", "IrisSearch"],
+            resources: [
+                .copy("Test Documents")
+            ]
+       )
     ]
 )
