@@ -227,9 +227,11 @@ struct IrisQuery {
 
 // MARK: Search
 extension IrisDB {
-    public func search(query: IrisQuery, kItems: Int = 5) async throws {
+    public func search(query: IrisQuery, kItems: Int = 5) async throws -> [Int] {
+        let unicodeNormalizedQuery = query.text.precomposedStringWithCompatibilityMapping
+        
         // Text index searching
-        var textEmbedding = try await textEmbedder.embed(content: query.text).map({Float($0)})
+        var textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
         faiss_fvec_renorm_L2(textEmbedder.dimension, 1, &textEmbedding)
         
         let semanticTextIds = try textIndex.search(normalizedQuery: textEmbedding, kItems: kItems)
@@ -237,22 +239,28 @@ extension IrisDB {
         // Image index searching
         
         // Database Search
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-        
-        // TODO: Need to setup a custom FTS5 build of sqlite. May need to switch IrisSearch to a full XCode project instead of SwiftPM.
-        let syntacticTextIds = try await dbQueue.read { db in
-            let pattern = FTS5Pattern(matchingAnyTokenIn: query.text)
-            
-            // Search with the query interface or SQL
-            let documents = try SearchableDocumentPiece.matching(pattern).fetchAll(db)
-            return documents.compactMap({$0.parentID})
-        }
-        
-        print("Semantic: \(semanticTextIds)")
-        print("Syntactic: \(syntacticTextIds)")
+//        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
+//        
+//        // TODO: Need to setup a custom FTS5 build of sqlite. May need to switch IrisSearch to a full XCode project instead of SwiftPM.
+//        let syntacticTextDocuments: [SearchableDocumentPiece] = (try await dbQueue.read { db in
+//            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
+//                return [] // Empty array, except swift type checking does not like just returning [].
+//            }
+//            
+//            // Search with the query interface or SQL and rank using internal BM25 function.
+//            let documents = try SearchableDocumentPiece
+//                .matching(pattern)
+//                .select(Column("id"), Column("textContent"), Column("parentID"), Column.rank)
+//                .order(Column.rank)
+//                .fetchAll(db)
+//
+//            return documents
+//        })
+//        
+//        print("Semantic: \(semanticTextIds)")
+//        print("Syntactic: \(syntacticTextDocuments)")
 
-        // Rank documents by how often they showed in any of the searches.
-        // Rank documents using BM25.
-
+        return semanticTextIds /*+ syntacticTextDocuments.compactMap({Int($0.parentID)})*/
+        
     }
 }

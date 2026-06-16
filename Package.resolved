@@ -1,5 +1,5 @@
 {
-  "originHash" : "81135900151644384ff279fec73018dc1462f0ba769b62387639fc7bafad6944",
+  "originHash" : "da02031f1e383b85c7abbdb768f2a73e0c8f79966c0f82474f4283d67fde88cc",
   "pins" : [
     {
       "identity" : "faissmobile",
@@ -8,6 +8,42 @@
       "state" : {
         "revision" : "9d5b9925305eea9398cc92ce4a8e51c8a4b043af",
         "version" : "0.0.1"
+      }
+    },
+    {
+      "identity" : "grdb.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/groue/GRDB.swift",
+      "state" : {
+        "revision" : "9ed8c8457e00ff9c7aedb3bf213f20a2cfdf509e",
+        "version" : "7.11.0"
+      }
+    },
+    {
+      "identity" : "swift-memory-allocation",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/coenttb/swift-memory-allocation",
+      "state" : {
+        "revision" : "afe7e86f16981007b841470d5ea79f0026868bc3",
+        "version" : "0.2.0"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
+      }
+    },
+    {
+      "identity" : "swift-testing-performance",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/coenttb/swift-testing-performance",
+      "state" : {
+        "revision" : "1a1967f7acfcb081e57122db463817c142cc7186",
+        "version" : "0.3.1"
       }
     },
     {

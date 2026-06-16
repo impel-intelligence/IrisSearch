@@ -42,12 +42,13 @@ public struct IrisDocument: Identifiable, Sendable, FetchableRecord, MutablePers
 
 
 /// A structure to match the document piece full text table used in FTS SQL searches.
-struct SearchableDocumentPiece: Codable, FetchableRecord, PersistableRecord {
+struct SearchableDocumentPiece: Codable, FetchableRecord, TableRecord {
     public static let databaseTableName = "document_pieces_ft"
     
     public var id: Int64
     public var textContent: String
     public var parentID: Int64
+    public var rank: Int64 // The FTS5 hidden rank column
 }
 
 /// A piece of a greater `IrisDocument`.

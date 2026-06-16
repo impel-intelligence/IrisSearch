@@ -58,7 +58,7 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:AllTests.xctestplan"
+            reference = "container:.swiftpm/IrisSearch-Package.xctestplan"
             default = "YES">
          </TestPlanReference>
       </TestPlans>
@@ -80,6 +80,36 @@
                BlueprintIdentifier = "IrisCommonTests"
                BuildableName = "IrisCommonTests"
                BlueprintName = "IrisCommonTests"
+               ReferencedContainer = "container:">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "IrisSearchTests"
+               BuildableName = "IrisSearchTests"
+               BlueprintName = "IrisSearchTests"
+               ReferencedContainer = "container:">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "IrisCommonTests"
+               BuildableName = "IrisCommonTests"
+               BlueprintName = "IrisCommonTests"
+               ReferencedContainer = "container:">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DigesterTests"
+               BuildableName = "DigesterTests"
+               BlueprintName = "DigesterTests"
                ReferencedContainer = "container:">
             </BuildableReference>
          </TestableReference>
