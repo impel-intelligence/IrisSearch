@@ -1,6 +1,15 @@
 {
-  "originHash" : "c4edd6b470f0d2f6d2c71ce6b094865d9aae3f032eeb45ed13e69c61ad4b8b01",
+  "originHash" : "109e1ffabcd520d7fa09bf69cee9e2c5a4eb07da3edbf7be93acf5b6765f47ad",
   "pins" : [
+    {
+      "identity" : "faissmobile",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/impel-intelligence/FaissMobile",
+      "state" : {
+        "revision" : "85206d043d299eab3be4e7f5bafc34ec27dce829",
+        "version" : "0.0.2"
+      }
+    },
     {
       "identity" : "grdb.swift",
       "kind" : "remoteSourceControl",
@@ -15,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/impel-intelligence/SwiftFaiss",
       "state" : {
-        "revision" : "4e3fae6f7b4bddf279892d5025bbd9424f0a920f",
-        "version" : "0.3.0"
+        "revision" : "0527a271e005e86b71437129e7d2173bba8d7db4",
+        "version" : "0.3.2"
       }
     }
   ],

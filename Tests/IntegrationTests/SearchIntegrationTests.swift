@@ -34,7 +34,7 @@ class SearchIntegrationTests {
         let query = IrisQuery(text: "Binary Search")
 
         try await measurePerformance {
-            _ = try await database.search(query: query, kItems: 10)
+            _ = try await database.search(query: query, nItems: 10)
         }
     }
     
