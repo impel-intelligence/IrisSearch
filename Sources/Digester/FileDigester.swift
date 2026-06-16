@@ -15,11 +15,13 @@ enum DigestionError: Error {
     case incorrectExtension
     case failedToReadContents
     case fileTypeNotValid(type: UTType)
+    case noAvailableDigester(type: UTType)
 }
 
-protocol FileDigester {
+public protocol FileDigester: Sendable {
     static var fileTypes: [UTType] { get }
     
+    init()
     func digest(file: URL) async throws -> [EmbeddableContent]
 }
 
