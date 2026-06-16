@@ -12,6 +12,7 @@ import Foundation
 import SwiftFaiss
 import SwiftFaissC
 import GRDB
+import TestUtilities
 
 // MARK: Initialization
 class IrisDB_InitializationTests {
@@ -37,7 +38,7 @@ class IrisDB_InitializationTests {
         
         let uuid = UUID()
         let content = "Test content"
-        let document = try await database.createDocument(uuid: uuid, embeddableContent: textContent(content))
+        let document = try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
         
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
         let documents = try await dbQueue.read { db in
@@ -64,7 +65,7 @@ class IrisDB_InitializationTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let uuid = UUID()
-        try await database.createDocument(uuid: uuid, embeddableContent: textContent("Test content"))
+        try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: "Test Content")])
         
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
         let pieces = try await dbQueue.read { db in
@@ -85,7 +86,7 @@ class IrisDB_InitializationTests {
         
         let uuid = UUID()
         let content = "Test content"
-        try await database.createDocument(uuid: uuid, embeddableContent: textContent(content))
+        try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
         
         let readDocument = try await database.readDocument(uuid: uuid)
         #expect(readDocument != nil)

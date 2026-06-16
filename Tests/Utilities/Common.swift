@@ -9,16 +9,18 @@ import IrisCommon
 import IrisSearch
 import Foundation
 
-class TestingDirectories {
-    let databaseName: String = "main"
-    let baseURL: URL
-    let bundleURL: URL
-    let sqliteURL: URL
-    let textIndexURL: URL
+public class TestingDirectories {
+    let uuid: UUID = UUID()
+    
+    public let databaseName: String = "main"
+    public let baseURL: URL
+    public let bundleURL: URL
+    public let sqliteURL: URL
+    public let textIndexURL: URL
     //    let imageIndexURL: URL
     
-    init() {
-        baseURL = FileManager.default.temporaryDirectory.appending(path: "tmp-database-\(UUID())")
+    public init() {
+        baseURL = FileManager.default.temporaryDirectory.appending(path: "tmp-database-\(uuid)")
         bundleURL = baseURL.appendingPathComponent("\(databaseName).irisdb")
         sqliteURL = bundleURL.appending(path: "map.sqlite")
         textIndexURL = bundleURL.appending(path: "text-index")
@@ -30,21 +32,7 @@ class TestingDirectories {
     }
 }
 
-/// Wrap a plain string as the digester would hand it to intake: a single text content unit.
-func textContent(_ string: String) -> [EmbeddableContent] {
-    return [.text(content: string)]
-}
-
-extension DocumentPiece {
-    /// Convenience for reading the text payload of a piece in assertions.
-    var text: String? {
-        if case .text(let content) = content { return content }
-        return nil
-    }
-}
-
-
-func measurePerformance(nRuns: Int = 100, _ block: @escaping () async throws -> Void) async rethrows {
+public func measurePerformance(nRuns: Int = 100, _ block: @escaping () async throws -> Void) async rethrows {
     let throwAwayRuns = nRuns / 10
     
     // Warmup the function

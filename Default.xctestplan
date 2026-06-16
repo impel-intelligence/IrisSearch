@@ -1,0 +1,45 @@
+{
+  "configurations" : [
+    {
+      "id" : "31ED86C8-A734-41FA-B881-4F2A8E7B5120",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "IrisSearchTests",
+        "name" : "IrisSearchTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "IntegrationTests",
+        "name" : "IntegrationTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "DigesterTests",
+        "name" : "DigesterTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "IrisCommonTests",
+        "name" : "IrisCommonTests"
+      }
+    }
+  ],
+  "version" : 1
+}
