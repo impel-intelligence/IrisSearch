@@ -126,14 +126,20 @@ extension IrisDB {
                 var chunkEmbedding: [Float] = try await embedChunk(chunk)
                 faiss_fvec_renorm_L2(textEmbedder.dimension, 1, &chunkEmbedding)
                 
-                let piece = DocumentPiece(content: content, embeddings: chunkEmbedding)
+                let piece = DocumentPiece(content: chunk, embeddings: chunkEmbedding)
                 pieces.append(piece)
             }
         }
-        
+                
         // Create a document object
         return IrisDocument(uuid: uuid, pieces: pieces)
     }
+    
+//    @discardableResult
+//    public func createDocumentBatch(packages: [(uuid: UUID, content: [EmbeddableContent])]) async throws -> IrisDocument {
+//        
+//        return []
+//    }
     
     @discardableResult
     public func createDocument(uuid: UUID, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
@@ -148,7 +154,7 @@ extension IrisDB {
             try document.insert(db)
             
             // Insert document places directly from the document's mutable piece array
-            for index in document.pieces.indices {
+            for index in 0..<document.pieces.count {
                 document.pieces[index].parentID = document.id
                 try document.pieces[index].insert(db)
             }
@@ -240,7 +246,7 @@ extension IrisDB {
         
         // Database Search
 //        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-//        
+//  
 //        // TODO: Need to setup a custom FTS5 build of sqlite. May need to switch IrisSearch to a full XCode project instead of SwiftPM.
 //        let syntacticTextDocuments: [SearchableDocumentPiece] = (try await dbQueue.read { db in
 //            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
@@ -260,7 +266,7 @@ extension IrisDB {
 //        print("Semantic: \(semanticTextIds)")
 //        print("Syntactic: \(syntacticTextDocuments)")
 
-        return semanticTextIds /*+ syntacticTextDocuments.compactMap({Int($0.parentID)})*/
+        return semanticTextIds// + syntacticTextDocuments.compactMap({Int($0.parentID)})
         
     }
 }

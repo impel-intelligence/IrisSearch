@@ -32,6 +32,13 @@
         "identifier" : "DigesterTests",
         "name" : "DigesterTests"
       }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "IntegrationTests",
+        "name" : "IntegrationTests"
+      }
     }
   ],
   "version" : 1
