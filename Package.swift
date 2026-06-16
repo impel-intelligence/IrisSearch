@@ -7,8 +7,6 @@ let package = Package(
     name: "IrisSearch",
     platforms: [
         .macOS(.v14),
-//        .macOS(.v15),
-//        .macOS(.v26),
         .iOS(.v26)
     ],
     products: [
@@ -19,16 +17,15 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.2.0"),
-//        .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0")
-        .package(path: "GRDB")
+        .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
+        .package(url: "https://github.com/coenttb/swift-testing-performance", from: "0.1.2")
     ],
     targets: [
         // Common
         .target(
             name: "IrisCommon",
             dependencies: [
-                "GRDB"
-//                .product(name: "GRDB", package: "GRDB.swift")
+                .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
         .testTarget(name: "IrisCommonTests", dependencies: ["IrisCommon"]),
@@ -39,13 +36,14 @@ let package = Package(
             dependencies: [
                 "IrisCommon",
                 "SwiftFaiss",
-                "GRDB"
-//                .product(name: "GRDB", package: "GRDB.swift")
+                .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
         .testTarget(
             name: "IrisSearchTests",
-            dependencies: ["IrisSearch"],
+            dependencies: [
+                "IrisSearch"
+            ],
             resources: [
                 .copy("Test Documents")
             ]
