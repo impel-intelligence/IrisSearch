@@ -6,7 +6,6 @@
 //
 
 import IrisCommon
-import IrisSearch
 import Foundation
 
 public class TestingDirectories {

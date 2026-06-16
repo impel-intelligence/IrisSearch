@@ -13,6 +13,7 @@ import IrisCommon
 
 enum IrisDBError: Error {
     case documentNotFound
+    case noDocuments
 }
 
 /// Database Structure File package
@@ -232,38 +233,59 @@ struct IrisQuery {
 
 // MARK: Search
 extension IrisDB {
-    public func search(query: IrisQuery, kItems: Int = 5) async throws -> [Int] {
+    public func search(query: IrisQuery, kItems: Int = 10) async throws -> [Int] {
+        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
+        
+        let numDocuments = try await dbQueue.read { db in
+            return try DocumentPiece.fetchCount(db)
+        }
+
+        guard numDocuments > 0 else {
+            throw IrisDBError.noDocuments
+        }
+        
         let unicodeNormalizedQuery = query.text.precomposedStringWithCompatibilityMapping
         
         // Text index searching
-        var textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
+        let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
 
         let semanticTextIds = try textIndex.search(query: textEmbedding, kItems: kItems)
         
         // Image index searching
         
         // Database Search
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-  
-        // TODO: Need to setup a custom FTS5 build of sqlite. May need to switch IrisSearch to a full XCode project instead of SwiftPM.
         let syntacticTextDocuments: [SearchableDocumentPiece] = (try await dbQueue.read { db in
             guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
-                return [] // Empty array, except swift type checking does not like just returning [].
+                return []
             }
             
             // Search with the query interface or SQL and rank using internal BM25 function.
             let documents = try SearchableDocumentPiece
                 .matching(pattern)
-                .select(Column("id"), Column("textContent"), Column("parentID"), Column.rank)
+                .select(Column("id"))
                 .order(Column.rank)
+                .limit(kItems)
                 .fetchAll(db)
 
             return documents
         })
+        let syntacticTextIds = syntacticTextDocuments.map({Int($0.id)})
         
-//        print("Semantic: \(semanticTextIds)")
-//        print("Syntactic: \(syntacticTextDocuments)")
+        
+        
+//        scores = defaultdict(float)
+//        for results in ranked_lists:           # e.g. [bm25_ids, vector_ids]
+//                for rank, doc_id in enumerate(results, start=1):
+//                    scores[doc_id] += 1.0 / (k + rank)
+//                return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
+//        let allIDs = semanticTextIds + syntacticTextDocuments.compactMap({Int($0.parentID)})
+//        
+//        let sortedByOccurrence = Dictionary(allIDs.map { ($0, 1) }, uniquingKeysWith: +).sorted { lhs, rhs in
+//            lhs.value > rhs.value
+//        }
+        
+        
         return semanticTextIds + syntacticTextDocuments.compactMap({Int($0.parentID)})
         
     }
