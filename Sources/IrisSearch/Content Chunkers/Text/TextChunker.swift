@@ -7,6 +7,6 @@
 
 import IrisCommon
 
-protocol TextChunker {
+public protocol TextChunker {
     func chunk(content: String) -> [String]
 }

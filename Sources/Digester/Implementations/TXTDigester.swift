@@ -10,10 +10,11 @@ import IrisCommon
 import Foundation
 
 final class TXTDigester: FileDigester {
+    let id: String = "txt"
     static let fileTypes: [UTType] = [.text, .plainText, .utf8PlainText, .utf16PlainText, .utf16ExternalPlainText]
     
     required init() { }
-
+    
     func digest(file: URL) throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
         try TXTDigester.validateLocalURL(file)
