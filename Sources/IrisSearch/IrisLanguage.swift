@@ -5,6 +5,6 @@
 //  Created by Taylor Lineman on 6/7/26.
 //
 
-enum IrisLanguage {
+public enum IrisLanguage {
     case english
 }

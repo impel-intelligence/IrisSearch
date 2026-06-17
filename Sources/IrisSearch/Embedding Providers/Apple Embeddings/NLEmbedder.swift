@@ -16,19 +16,19 @@ extension IrisLanguage {
     }
 }
 
-class NLEmbedder: EmbeddingProvider {
-    enum EmbeddingError: Error {
+public class NLEmbedder: EmbeddingProvider {
+    public enum EmbeddingError: Error {
         case couldNotCreateVector
         case languageUnavailable(NLLanguage)
     }
     
     private var embedding: NLEmbedding
         
-    var dimension: Int {
+    public var dimension: Int {
         return embedding.dimension
     }
     
-    init(language: IrisLanguage) throws {
+    public init(language: IrisLanguage) throws {
         guard let embedding = NLEmbedding.sentenceEmbedding(for: language.nlLanguage) else {
             throw EmbeddingError.languageUnavailable(language.nlLanguage)
         }
@@ -36,7 +36,7 @@ class NLEmbedder: EmbeddingProvider {
         self.embedding = embedding
     }
     
-    func embed(content: String) async throws -> [Double] {
+    public func embed(content: String) async throws -> [Double] {
         guard let embedding = embedding.vector(for: content) else {
             throw EmbeddingError.couldNotCreateVector
         }

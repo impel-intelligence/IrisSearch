@@ -7,7 +7,7 @@
 
 import NaturalLanguage
 
-class NLContextualEmbedder: EmbeddingProvider {
+public class NLContextualEmbedder: EmbeddingProvider {
     enum EmbeddingError: Error {
         case couldNotCreateVector
         case languageUnavailable(NLLanguage)
@@ -16,11 +16,11 @@ class NLContextualEmbedder: EmbeddingProvider {
     private var embedding: NLContextualEmbedding
     private var language: NLLanguage
     
-    var dimension: Int {
+    public var dimension: Int {
         return embedding.dimension
     }
     
-    init(language: IrisLanguage) throws {
+    public init(language: IrisLanguage) throws {
         self.language = language.nlLanguage
         guard let _embedding = NLContextualEmbedding(language: self.language) else {
             throw EmbeddingError.languageUnavailable(self.language)
@@ -30,7 +30,7 @@ class NLContextualEmbedder: EmbeddingProvider {
         try self.embedding.load()
     }
     
-    func embed(content: String) async throws -> [Double] {
+    public func embed(content: String) async throws -> [Double] {
         let embedding = try embedding.embeddingResult(for: content, language: language)
         #warning("Finish this")
         return []

@@ -5,6 +5,6 @@
 //  Created by Taylor Lineman on 6/16/26.
 //
 
-protocol FusionAlgorithm {
+public protocol FusionAlgorithm {
     static func rank(inputs: [[Int]]) -> [Int]
 }

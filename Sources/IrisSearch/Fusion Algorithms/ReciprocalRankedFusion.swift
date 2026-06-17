@@ -5,10 +5,10 @@
 //  Created by Taylor Lineman on 6/16/26.
 //
 
-struct ReciprocalRankedFusion: FusionAlgorithm {
+public struct ReciprocalRankedFusion: FusionAlgorithm {
     static let rrfK = 60
     
-    static func rank(inputs: [[Int]]) -> [Int] {
+    public static func rank(inputs: [[Int]]) -> [Int] {
         var scores: [Int: Int] = [:]
         
         for idArray in inputs {
