@@ -21,12 +21,13 @@ enum PDFDigestionError: Error {
     case couldNotCreateDocument
 }
 
-final class PDFDigester: FileDigester {
+final class PDFDigester: FileDigester, Sendable {
     struct RenderedPage: Sendable {
         let index: Int
         let image: CGImage
     }
     
+    let id: String = "pdf"
     static let fileTypes: [UTType] = [.pdf, UTType("com.adobe.pdf")!]
     
     let processImages: Bool

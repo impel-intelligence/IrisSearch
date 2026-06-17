@@ -11,7 +11,7 @@ import SwiftFaiss
 import SwiftFaissC
 import IrisCommon
 
-enum IrisDBError: Error {
+public enum IrisDBError: Error {
     case documentNotFound
     case noDocuments
 }
@@ -26,7 +26,7 @@ enum IrisDBError: Error {
 ///     - doc-1.index
 ///     - doc-3.index
 /// - map.sqlite
-final class IrisDB {
+public final class IrisDB {
     private static let databaseExtension = "irisdb"
     private static let indexExtension = "index"
     
@@ -39,7 +39,7 @@ final class IrisDB {
     private var textChunker: TextChunker
     private var textEmbedder: EmbeddingProvider
     
-    init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider, textChunker: TextChunker) throws {
+    public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider, textChunker: TextChunker) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
         self.textEmbedder = textEmbedder
         self.textChunker = textChunker
@@ -226,7 +226,7 @@ extension IrisDB {
     }
 }
 
-struct IrisQuery {
+public struct IrisQuery {
     let text: String
     // imageData: Data
 }
@@ -300,7 +300,6 @@ extension IrisDB {
         // Compact the rank order list, to remove an documents that were not found.
         let compactOrdered = orderedByRank.compactMap { $0 }
         
-        print(compactOrdered.map({$0.id}), rankedDocumentIDs)
         // Limit the kItems the user requested to the number of documents we found.
         let limit = nItems.clamped(to: 0...compactOrdered.count)
         return Array(compactOrdered.prefix(upTo: limit))

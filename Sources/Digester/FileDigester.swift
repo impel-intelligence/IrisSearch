@@ -18,7 +18,8 @@ enum DigestionError: Error {
     case noAvailableDigester(type: UTType)
 }
 
-public protocol FileDigester: Sendable {
+public protocol FileDigester: Sendable, Identifiable {
+    var id: String { get }
     static var fileTypes: [UTType] { get }
     
     init()
@@ -26,6 +27,16 @@ public protocol FileDigester: Sendable {
 }
 
 extension FileDigester {
+    static func isValidType(_ type: UTType) -> Bool {
+        for myType in Self.fileTypes {
+            if type.conforms(to: myType) {
+                return true
+            }
+        }
+
+        return false
+    }
+    
     static func validateLocalURL(_ url: URL) throws {
         guard url.isFileURL else { throw DigestionError.notAFileURL }
         guard FileManager.default.isReadableFile(atPath: url.path(percentEncoded: false)) else { throw DigestionError.fileNotReadable }
