@@ -30,19 +30,16 @@ public final class IrisDB {
     private static let databaseExtension = "irisdb"
     private static let indexExtension = "index"
     
-    private var databaseURL: URL
-    private var sqliteURL: URL {
-        return databaseURL.appending(path: "map").appendingPathExtension("sqlite")
-    }
+    private let databaseURL: URL
+    private let textIndex: FaissIndex
+    private let textChunker: TextChunker
+    private let textEmbedder: EmbeddingProvider
     
-    private var textIndex: FaissIndex
-    private var textChunker: TextChunker
-    private var textEmbedder: EmbeddingProvider
-    
-    private var dbPool: DatabasePool
+    private let dbPool: DatabasePool
     
     public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider, textChunker: TextChunker) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
+
         self.textEmbedder = textEmbedder
         self.textChunker = textChunker
         
@@ -52,14 +49,13 @@ public final class IrisDB {
         
         self.textIndex = try FaissIndex(indexLocation: databaseURL.appending(path: "text-index"), embeddingProvider: textEmbedder)
 
-        let tmpSqliteURL = databaseURL.appending(path: "map").appendingPathExtension("sqlite")
-        dbPool = try DatabasePool(path: tmpSqliteURL.path(percentEncoded: false))
+        let sqliteURL = databaseURL.appending(path: "map").appendingPathExtension("sqlite")
+        dbPool = try DatabasePool(path: sqliteURL.path(percentEncoded: false))
 
         try initializeDB()
     }
     
     private func initializeDB() throws {
-        // TODO: Convert to a DatabaseMigration
         var migrator = DatabaseMigrator()
         
         migrator.registerMigration("Create Documents Table") { db in
@@ -148,13 +144,7 @@ extension IrisDB {
         // Create a document object
         return IrisDocument(uuid: uuid, title: title, description: description, pieces: pieces)
     }
-    
-    @discardableResult
-    public func createDocumentBatch(packages: [(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent])]) async throws -> [IrisDocument] {
         
-        return []
-    }
-    
     @discardableResult
     public func createDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
         // Create a document object

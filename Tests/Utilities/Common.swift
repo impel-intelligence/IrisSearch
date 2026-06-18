@@ -31,7 +31,16 @@ public class TestingDirectories {
     }
 }
 
-public func measurePerformance(nRuns: Int = 100, _ block: @escaping () async throws -> Void) async rethrows {
+public struct PerformanceBundle {
+    public let average: Double
+    public let variance: Double
+    public let standardDeviation: Double
+    public let relativeStandardDeviation: Double
+    public let values: [Double]
+}
+
+@discardableResult
+public func measurePerformance(nRuns: Int = 100, _ block: @escaping () async throws -> Void) async rethrows -> PerformanceBundle {
     let throwAwayRuns = nRuns / 10
     
     // Warmup the function
@@ -66,4 +75,6 @@ public func measurePerformance(nRuns: Int = 100, _ block: @escaping () async thr
     let relativeStandardDeviation = average == 0 ? 0 : (standardDeviation / average) * 100
     
     print("measured [Time, seconds] average: \(average), relative standard deviation: \(relativeStandardDeviation), values: \(seconds)")
+    
+    return PerformanceBundle(average: average, variance: variance, standardDeviation: standardDeviation, relativeStandardDeviation: relativeStandardDeviation, values: seconds)
 }

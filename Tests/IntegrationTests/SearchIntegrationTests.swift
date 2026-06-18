@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import IrisSearch
 @testable import Digester
+import IrisCommon
 import TestUtilities
 
 class SearchIntegrationTests {
@@ -22,13 +23,15 @@ class SearchIntegrationTests {
         let papersURL = Bundle.module.url(forResource: "Arxiv", withExtension: nil, subdirectory: "Test Documents")!
         let papers = try FileManager.default.contentsOfDirectory(atPath: papersURL.path(percentEncoded: false))
         
-        let digestor = PDFDigester(processImages: false)
+        let digestor = PDFDigester()
 
         for (index, paperName) in papers.enumerated() {
-            let url = papersURL.appendingPathComponent(paperName, conformingTo: .pdf)
-            let digest = try await digestor.digest(file: url)
-            try await database.createDocument(uuid: UUID(), title: paperName, description: paperName, embeddableContent: digest)
-            print("[\(index) - \(paperName)] Added \(digest.count) pieces")
+            let measurement = try await ContinuousClock().measure {
+                let url = papersURL.appendingPathComponent(paperName, conformingTo: .pdf)
+                let digest = try await digestor.digest(file: url)
+                try await database.createDocument(uuid: UUID(), title: paperName, description: paperName, embeddableContent: digest)
+            }
+            print("[\(index) - \(paperName)] \(measurement)")// Added \(digest.count) pieces")
         }
         
         let query = IrisQuery(text: "Binary Search")
