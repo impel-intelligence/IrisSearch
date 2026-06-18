@@ -38,15 +38,19 @@ class IrisDB_InitializationTests {
         
         let uuid = UUID()
         let content = "Test content"
-        let document = try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
-        
+        let title = "Test title"
+        let description = "Test description"
+        let document = try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content)])
+
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
         let documents = try await dbQueue.read { db in
             return try IrisDocument.fetchAll(db)
         }
-        
+
         #expect(documents.count == 1, "Exactly one document should exist in the database.")
         #expect(documents.first?.uuid == uuid, "The document's uuid should match the provided uuid.")
+        #expect(documents.first?.title == title, "The document's title should match the provided title.")
+        #expect(documents.first?.description == description, "The document's description should match the provided description.")
         
         // The chunked content should be persisted as document pieces tied to the parent.
         let pieces = try await dbQueue.read { db in
@@ -65,7 +69,7 @@ class IrisDB_InitializationTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let uuid = UUID()
-        try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: "Test Content")])
+        try await database.createDocument(uuid: uuid, title: "Test title", description: "Test description", embeddableContent: [.text(content: "Test Content")])
         
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
         let pieces = try await dbQueue.read { db in
@@ -86,11 +90,15 @@ class IrisDB_InitializationTests {
         
         let uuid = UUID()
         let content = "Test content"
-        try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
-        
+        let title = "Test title"
+        let description = "Test description"
+        try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content)])
+
         let readDocument = try await database.readDocument(uuid: uuid)
         #expect(readDocument != nil)
         #expect(readDocument?.uuid == uuid)
+        #expect(readDocument?.title == title, "Reading a document should round-trip its title.")
+        #expect(readDocument?.description == description, "Reading a document should round-trip its description.")
         #expect(readDocument?.pieces.count == 1, "Reading a document should load its persisted pieces.")
         #expect(readDocument?.pieces.first?.text == content, "The loaded piece should round-trip the original content.")
     }

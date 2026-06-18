@@ -27,7 +27,7 @@ class SearchIntegrationTests {
         for (index, paperName) in papers.enumerated() {
             let url = papersURL.appendingPathComponent(paperName, conformingTo: .pdf)
             let digest = try await digestor.digest(file: url)
-            try await database.createDocument(uuid: UUID(), embeddableContent: digest)
+            try await database.createDocument(uuid: UUID(), title: paperName, description: paperName, embeddableContent: digest)
             print("[\(index) - \(paperName)] Added \(digest.count) pieces")
         }
         

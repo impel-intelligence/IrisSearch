@@ -39,6 +39,8 @@ public final class IrisDB {
     private var textChunker: TextChunker
     private var textEmbedder: EmbeddingProvider
     
+    private var dbPool: DatabasePool
+    
     public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider, textChunker: TextChunker) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
         self.textEmbedder = textEmbedder
@@ -49,7 +51,10 @@ public final class IrisDB {
         }
         
         self.textIndex = try FaissIndex(indexLocation: databaseURL.appending(path: "text-index"), embeddingProvider: textEmbedder)
-        
+
+        let tmpSqliteURL = databaseURL.appending(path: "map").appendingPathExtension("sqlite")
+        dbPool = try DatabasePool(path: tmpSqliteURL.path(percentEncoded: false))
+
         try initializeDB()
     }
     
@@ -58,12 +63,23 @@ public final class IrisDB {
         var migrator = DatabaseMigrator()
         
         migrator.registerMigration("Create Documents Table") { db in
-            try db.create(table: "documents") { table in
+            try db.create(table: IrisDocument.databaseTableName) { table in
                 table.autoIncrementedPrimaryKey("id")
                 table.column("uuid", .blob).unique().notNull()
+                table.column("title", .text).notNull()
+                table.column("description", .text).notNull()
             }
             
-            try db.create(table: "document_pieces") { table in
+            try db.create(virtualTable: SearchableDocument.databaseTableName, using: FTS5()) { table in
+                table.tokenizer = .porter()
+                
+                table.synchronize(withTable: IrisDocument.databaseTableName)
+                table.column("id")
+                table.column("title")
+                table.column("description")
+            }
+
+            try db.create(table: DocumentPiece.databaseTableName) { table in
                 table.autoIncrementedPrimaryKey("id")
                 table.column("contentType", .integer).notNull()
                 table.column("textContent", .text)
@@ -74,18 +90,17 @@ public final class IrisDB {
                 table.foreignKey(["parentID"], references: "documents", onDelete: .cascade)
             }
 
-            try db.create(virtualTable: "document_pieces_ft", using: FTS5()) { table in
+            try db.create(virtualTable: SearchableDocumentPiece.databaseTableName, using: FTS5()) { table in
                 table.tokenizer = .porter()
                 
-                table.synchronize(withTable: "document_pieces")
+                table.synchronize(withTable: DocumentPiece.databaseTableName)
                 table.column("id")
                 table.column("parentID")
                 table.column("textContent")
             }
         }
         
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-        try migrator.migrate(dbQueue)
+        try migrator.migrate(dbPool)
     }
 }
 
@@ -112,7 +127,7 @@ extension IrisDB {
         }
     }
     
-    private func createDocumentObject(uuid: UUID, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
+    private func createDocumentObject(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
         // We need to expand `embeddableContent` to contain any data
         var pieces: [DocumentPiece] = []
         
@@ -124,32 +139,29 @@ extension IrisDB {
             embeddings.reserveCapacity(chunkedContent.count)
             
             for chunk in chunkedContent {
-                var chunkEmbedding: [Float] = try await embedChunk(chunk)
-                
+                let chunkEmbedding: [Float] = try await embedChunk(chunk)
                 let piece = DocumentPiece(content: chunk, embeddings: chunkEmbedding)
                 pieces.append(piece)
             }
         }
                 
         // Create a document object
-        return IrisDocument(uuid: uuid, pieces: pieces)
+        return IrisDocument(uuid: uuid, title: title, description: description, pieces: pieces)
     }
     
-//    @discardableResult
-//    public func createDocumentBatch(packages: [(uuid: UUID, content: [EmbeddableContent])]) async throws -> IrisDocument {
-//        
-//        return []
-//    }
+    @discardableResult
+    public func createDocumentBatch(packages: [(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent])]) async throws -> [IrisDocument] {
+        
+        return []
+    }
     
     @discardableResult
-    public func createDocument(uuid: UUID, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-        
+    public func createDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
         // Create a document object
-        let document = try await createDocumentObject(uuid: uuid, embeddableContent: embeddableContent)
+        let document = try await createDocumentObject(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
 
         // Insert the document into the database, capturing the inserted record (with its assigned rowID).
-        let insertedDocument = try await dbQueue.write { db in
+        let insertedDocument = try await dbPool.write { db in
             var document = document
             try document.insert(db)
             
@@ -168,22 +180,18 @@ extension IrisDB {
     }
     
     public func readDocument(uuid: UUID) async throws -> IrisDocument? {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-        
-        return try await dbQueue.read { db in
+        return try await dbPool.read { db in
             guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
             document.pieces = try document.request(for: IrisDocument.pieces).fetchAll(db)
             return document
         }
     }
     
-    public func updateDocument(uuid: UUID, embeddableContent: [EmbeddableContent], chunker: TextChunker) async throws {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-        
+    public func updateDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent], chunker: TextChunker) async throws {
         // Create a document object
-        let newDocument = try await createDocumentObject(uuid: uuid, embeddableContent: embeddableContent)
+        let newDocument = try await createDocumentObject(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
 
-        let updatedDocument = try await dbQueue.write { [newDocument] db in
+        let updatedDocument = try await dbPool.write { [newDocument] db in
             // We need to get the original document so we can find set the new document's id.
             guard let existingDocument = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { throw IrisDBError.documentNotFound }
 
@@ -209,13 +217,11 @@ extension IrisDB {
     }
     
     public func deleteDocument(uuid: UUID) async throws {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-        
-        let tmpDocument = try await dbQueue.read { db in
+        let tmpDocument = try await dbPool.read { db in
             return try IrisDocument.fetchOne(db, key: ["uuid": uuid])
         }
         
-        _ = try await dbQueue.write { db in
+        _ = try await dbPool.write { db in
             try IrisDocument.deleteOne(db, key: ["uuid": uuid])
         }
 
@@ -234,9 +240,7 @@ public struct IrisQuery {
 // MARK: Search
 extension IrisDB {
     public func search(query: IrisQuery, nItems: Int = 10) async throws -> [IrisDocument] {
-        let dbQueue = try DatabaseQueue(path: sqliteURL.path(percentEncoded: false))
-        
-        let numDocuments = try await dbQueue.read { db in
+        let numDocuments = try await dbPool.read { db in
             return try DocumentPiece.fetchCount(db)
         }
 
@@ -256,8 +260,25 @@ extension IrisDB {
         
         // Image index searching
         
-        // Database Search
-        let syntacticTextDocuments: [SearchableDocumentPiece] = (try await dbQueue.read { db in
+        // Document Database Search
+        let syntacticTextDocuments: [SearchableDocument] = (try await dbPool.read { db in
+            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
+                return []
+            }
+            
+            // Search with the query interface or SQL and rank using internal BM25 function.
+            let documents = try SearchableDocument
+                .matching(pattern)
+                .select(Column("id"), Column("title"), Column("description"))
+                .order(Column.rank)
+                .limit(searchLimit)
+                .fetchAll(db)
+            
+            return documents
+        })
+
+        // Document Piece Database Search
+        let syntacticTextDocumentPieces: [SearchableDocumentPiece] = (try await dbPool.read { db in
             guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
                 return []
             }
@@ -273,14 +294,21 @@ extension IrisDB {
             return documents
         })
         
+        // Take just the document ids from the searched document pieces
+        let syntacticDocumentIds = syntacticTextDocuments.map { Int($0.id) }
+        
         // Take just the document ids from the searched document pieces.
-        let syntacticTextIds = syntacticTextDocuments.map({Int($0.id)})
+        let syntacticDocumentPieceIds = syntacticTextDocumentPieces.map({Int($0.id)})
         
         // Rank the document IDs using Reciprocal Ranked Fusion.
-        let rankedDocumentIDs: [Int] = ReciprocalRankedFusion.rank(inputs: [semanticTextIds, syntacticTextIds])
+        let rankedDocumentIDs: [Int] = ReciprocalRankedFusion.rank(inputs: [
+            semanticTextIds,
+            syntacticDocumentPieceIds,
+            syntacticDocumentIds
+        ])
         
         // Grab all of the documents we found from the database, they will be sorted back into rank next.
-        let searchedDocuments = try await dbQueue.read { db in
+        let searchedDocuments = try await dbPool.read { db in
             return try IrisDocument.filter(rankedDocumentIDs.contains(Column("id"))).fetchAll(db)
         }
         

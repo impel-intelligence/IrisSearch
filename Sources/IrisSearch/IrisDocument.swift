@@ -9,37 +9,54 @@ import GRDB
 import IrisCommon
 import Foundation
 
+/// A structure to match the document full text table used in FTS SQL searches.
+struct SearchableDocument: Codable, FetchableRecord, TableRecord {
+    public static let databaseTableName = "documents_ft"
+    
+    public var id: Int64
+    public var title: String
+    public var description: String
+}
+
+
 public struct IrisDocument: Identifiable, Sendable, FetchableRecord, MutablePersistableRecord {
     public static let databaseTableName: String = "documents"
     static let pieces = hasMany(DocumentPiece.self)
 
     nonisolated(unsafe) public var id: Int64? = nil
     public let uuid: UUID
+    public var title: String
+    public var description: String
     
     /// Loaded separately from the `document_pieces` table; not a column on `documents`.
     public var pieces: [DocumentPiece]
 
-    public init(uuid: UUID, pieces: [DocumentPiece] = []) {
+    public init(uuid: UUID, title: String, description: String, pieces: [DocumentPiece] = []) {
         self.uuid = uuid
         self.pieces = pieces
+        self.title = title
+        self.description = description
     }
 
     public init(row: GRDB.Row) throws {
         id = row["id"]
         uuid = row["uuid"]
+        description = row["description"]
+        title = row["title"]
         pieces = []
     }
 
     public func encode(to container: inout GRDB.PersistenceContainer) throws {
         container["id"] = id
         container["uuid"] = uuid
+        container["description"] = description
+        container["title"] = title
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
     }
 }
-
 
 /// A structure to match the document piece full text table used in FTS SQL searches.
 struct SearchableDocumentPiece: Codable, FetchableRecord, TableRecord {

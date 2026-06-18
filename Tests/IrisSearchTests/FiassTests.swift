@@ -24,7 +24,7 @@ class IrisDB_FaissIndexTests {
         let uuid = UUID()
         let content = "Test content"
         
-        _ = try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
+        _ = try await database.createDocument(uuid: uuid, title: "Test title", description: "Test description", embeddableContent: [.text(content: content)])
         let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
         let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
         
@@ -41,7 +41,7 @@ class IrisDB_FaissIndexTests {
         let uuid = UUID()
         let content = "Test content"
         
-        _ = try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
+        _ = try await database.createDocument(uuid: uuid, title: "Test title", description: "Test description", embeddableContent: [.text(content: content)])
         let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
         let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
         
@@ -66,11 +66,11 @@ class IrisDB_FaissIndexTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let uuid = UUID()
-        try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: "Original Content")])
+        try await database.createDocument(uuid: uuid, title: "Original", description: "Original Content", embeddableContent: [.text(content: "Original Content")])
         
         let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
         let expectedChunks = chunker.chunk(content: newContent)
-        try await database.updateDocument(uuid: uuid, embeddableContent: [.text(content: newContent)], chunker: chunker)
+        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent)], chunker: chunker)
         
         let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
         #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index should still exist after an update.")
@@ -87,11 +87,11 @@ class IrisDB_FaissIndexTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let uuid = UUID()
-        let document = try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: "Original Content")])
+        let document = try await database.createDocument(uuid: uuid, title: "Original", description: "Original Content", embeddableContent: [.text(content: "Original Content")])
         
         let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
         let expectedChunks = chunker.chunk(content: newContent)
-        try await database.updateDocument(uuid: uuid, embeddableContent: [.text(content: newContent)], chunker: chunker)
+        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent)], chunker: chunker)
         
         let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
         let globalIndex = try IDMap.from(globalIndexPath.path())
@@ -111,8 +111,8 @@ class IrisDB_FaissIndexTests {
         
         let firstUUID = UUID()
         let secondUUID = UUID()
-        let first = try await database.createDocument(uuid: firstUUID, embeddableContent: [.text(content: "First Document")])
-        let second = try await database.createDocument(uuid: secondUUID, embeddableContent: [.text(content: "Second Document")])
+        let first = try await database.createDocument(uuid: firstUUID, title: "First", description: "First Document", embeddableContent: [.text(content: "First Document")])
+        let second = try await database.createDocument(uuid: secondUUID, title: "Second", description: "Second Document", embeddableContent: [.text(content: "Second Document")])
         
         let expectedFirst = chunker.chunk(content: "First document").count
         let expectedSecond = chunker.chunk(content: "Second document").count
@@ -138,8 +138,8 @@ class IrisDB_FaissIndexTests {
         
         let keepUUID = UUID()
         let removeUUID = UUID()
-        let keep = try await database.createDocument(uuid: keepUUID, embeddableContent: [.text(content: "Document to Keep")])
-        let remove = try await database.createDocument(uuid: removeUUID, embeddableContent: [.text(content: "Document to Remove")])
+        let keep = try await database.createDocument(uuid: keepUUID, title: "Keep", description: "Document to Keep", embeddableContent: [.text(content: "Document to Keep")])
+        let remove = try await database.createDocument(uuid: removeUUID, title: "Remove", description: "Document to Remove", embeddableContent: [.text(content: "Document to Remove")])
         
         try await database.deleteDocument(uuid: removeUUID)
         
