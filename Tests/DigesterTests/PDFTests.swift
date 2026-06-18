@@ -8,6 +8,7 @@
 import Testing
 @testable import Digester
 import Foundation
+import TestUtilities
 
 struct PDFArgument {
     var url: URL
@@ -47,10 +48,16 @@ struct PDFArgument {
     
     #expect(nImage == pdfFile.numberOfPages, "The number of images should match the number of PDF pages.")
     #expect(nText == pdfFile.numberOfPagesWithText, "The number of text elements should match the number of PDF pages with text.")
-//    guard case let .text(pdfContent) = digest.first else {
-//        #expect(Bool(false), "The first content should be text")
-//        return
-//    }
-//
-//    #expect(pdfContent.trimmingCharacters(in: .newlines) == pdfFile.bodyText.trimmingCharacters(in: .newlines), "The body text should match the tested text.")
+}
+
+@Test("Speed Test", arguments: [
+    Bundle.module.url(forResource: "long-pdf-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!
+]) func testPDFConversioNSpeed(pdfURL: URL) async throws {
+    let digestor = PDFDigester()
+    
+    let performance = try await measurePerformance(nRuns: 10) {
+        _ = try await digestor.digest(file: pdfURL)
+    }
+    
+    #expect(performance.average < 0.5)
 }
