@@ -6,6 +6,8 @@
 //
 
 public struct BasicTextChunker: TextChunker {
+    public init() { }
+    
     public func chunk(content: String) -> [String] {
         return chunkText(input: content, splits: ["\n", "."], targetCharacters: 512, overlap: 0)
     }

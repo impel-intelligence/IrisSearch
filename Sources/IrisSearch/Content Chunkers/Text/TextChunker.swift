@@ -8,5 +8,7 @@
 import IrisCommon
 
 public protocol TextChunker {
+    init()
+    
     func chunk(content: String) -> [String]
 }
