@@ -20,6 +20,10 @@ public class NLContextualEmbedder: EmbeddingProvider {
         return embedding.dimension
     }
     
+    required public convenience init() throws {
+        try self.init(language: .english)
+    }
+
     public init(language: IrisLanguage) throws {
         self.language = language.nlLanguage
         guard let _embedding = NLContextualEmbedding(language: self.language) else {

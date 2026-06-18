@@ -28,6 +28,10 @@ public class NLEmbedder: EmbeddingProvider {
         return embedding.dimension
     }
     
+    required public convenience init() throws {
+        try self.init(language: .english)
+    }
+    
     public init(language: IrisLanguage) throws {
         guard let embedding = NLEmbedding.sentenceEmbedding(for: language.nlLanguage) else {
             throw EmbeddingError.languageUnavailable(language.nlLanguage)

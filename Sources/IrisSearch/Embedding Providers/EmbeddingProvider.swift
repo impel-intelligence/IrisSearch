@@ -7,6 +7,8 @@
 
 public protocol EmbeddingProvider: AnyObject {
     var dimension: Int { get }
-    
+        
+    init() throws
+
     func embed(content: String) async throws -> [Double]
 }
