@@ -10,8 +10,7 @@ import IrisCommon
 import Foundation
 
 final class TXTDigester: FileDigester {
-    let id: String = "txt"
-    static let fileTypes: [UTType] = [.text, .plainText, .utf8PlainText, .utf16PlainText, .utf16ExternalPlainText]
+    static let fileTypes: [UTType] = [.text, .plainText, .utf8PlainText, .utf16PlainText, .utf16ExternalPlainText, UTType("com.unknown.md")!]
     
     required init() { }
     
