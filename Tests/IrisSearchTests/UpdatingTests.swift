@@ -23,10 +23,12 @@ class IrisDB_UpdatingTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let uuid = UUID()
-        let original = try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: "Original content")])
-        
+        let original = try await database.createDocument(uuid: uuid, title: "Original", description: "Original content", embeddableContent: [.text(content: "Original content")])
+
         let newContent = "Completely different content"
-        try await database.updateDocument(uuid: uuid, embeddableContent: [.text(content: newContent)], chunker: chunker)
+        let newTitle = "Updated title"
+        let newDescription = "Updated description"
+        try await database.updateDocument(uuid: uuid, title: newTitle, description: newDescription, embeddableContent: [.text(content: newContent)], chunker: chunker)
         
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
         let documents = try await dbQueue.read { db in
@@ -38,6 +40,8 @@ class IrisDB_UpdatingTests {
         let updated = documents.first!
         #expect(updated.uuid == uuid, "The uuid should be unchanged after an update.")
         #expect(updated.id == original.id, "The rowID should be preserved across an update.")
+        #expect(updated.title == newTitle, "The title should reflect the updated value.")
+        #expect(updated.description == newDescription, "The description should reflect the updated value.")
         
         let pieces = try await dbQueue.read { db in
             return try DocumentPiece.fetchAll(db)   
@@ -54,14 +58,14 @@ class IrisDB_UpdatingTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let uuid = UUID()
-        try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: "Original content")])
-        
+        try await database.createDocument(uuid: uuid, title: "Original", description: "Original content", embeddableContent: [.text(content: "Original content")])
+
         // Use content large enough to produce more than one chunk.
         let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
         let expectedChunks = chunker.chunk(content: newContent)
         #expect(expectedChunks.count > 1, "Test precondition: updated content should chunk into multiple pieces.")
-        
-        try await database.updateDocument(uuid: uuid, embeddableContent: [.text(content: newContent)], chunker: chunker)
+
+        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent)], chunker: chunker)
         
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
         let pieces = try await dbQueue.read { db in
@@ -78,7 +82,7 @@ class IrisDB_UpdatingTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         await #expect(throws: IrisDBError.documentNotFound) {
-            try await database.updateDocument(uuid: UUID(), embeddableContent: [.text(content: "No such document")], chunker: chunker)
+            try await database.updateDocument(uuid: UUID(), title: "Missing", description: "No such document", embeddableContent: [.text(content: "No such document")], chunker: chunker)
         }
     }
 }

@@ -22,10 +22,10 @@ class IrisDB_SearchTests {
         let embedder = try NLEmbedder(language: .english)
         nonisolated(unsafe) let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
-        try await database.createDocument(uuid: UUID(), embeddableContent: [.text(content: "Original content")])
-        try await database.createDocument(uuid: UUID(), embeddableContent: [.text(content: "Different")])
-        try await database.createDocument(uuid: UUID(), embeddableContent: [.text(content: "Holy smokes")])
-        try await database.createDocument(uuid: UUID(), embeddableContent: [.text(content: "Sharks!")])
+        try await database.createDocument(uuid: UUID(), title: "Original", description: "Original content", embeddableContent: [.text(content: "Original content")])
+        try await database.createDocument(uuid: UUID(), title: "Different", description: "Different", embeddableContent: [.text(content: "Different")])
+        try await database.createDocument(uuid: UUID(), title: "Holy smokes", description: "Holy smokes", embeddableContent: [.text(content: "Holy smokes")])
+        try await database.createDocument(uuid: UUID(), title: "Sharks", description: "Sharks!", embeddableContent: [.text(content: "Sharks!")])
         
         try await measurePerformance {
             _ = try await database.search(query: .init(text: "original"), nItems: 2)
@@ -50,7 +50,7 @@ class IrisDB_SearchTests {
                 let content = try String(contentsOf: url, encoding: .utf8)
                 let uuid = UUID()
                 sonnets[uuid] = content
-                try await database.createDocument(uuid: uuid, embeddableContent: [.text(content: content)])
+                try await database.createDocument(uuid: uuid, title: sonnet, description: sonnet, embeddableContent: [.text(content: content)])
             }
         }
         print("Loaded Documents in \(loadingTime)")
