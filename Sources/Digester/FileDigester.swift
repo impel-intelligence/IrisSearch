@@ -19,7 +19,6 @@ enum DigestionError: Error {
 }
 
 public protocol FileDigester: Sendable, Identifiable {
-    var id: String { get }
     static var fileTypes: [UTType] { get }
     
     init()
@@ -28,13 +27,7 @@ public protocol FileDigester: Sendable, Identifiable {
 
 extension FileDigester {
     static func isValidType(_ type: UTType) -> Bool {
-        for myType in Self.fileTypes {
-            if type.conforms(to: myType) {
-                return true
-            }
-        }
-
-        return false
+        return Self.fileTypes.contains(where: { type.conforms(to: $0) })
     }
     
     static func validateLocalURL(_ url: URL) throws {
