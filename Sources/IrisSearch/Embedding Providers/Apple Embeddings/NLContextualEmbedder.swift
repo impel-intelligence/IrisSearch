@@ -6,19 +6,18 @@
 //
 
 import NaturalLanguage
+import os
+import Synchronization
 
-public class NLContextualEmbedder: EmbeddingProvider {
+public final class NLContextualEmbedder: EmbeddingProvider, Sendable {
     enum EmbeddingError: Error {
         case couldNotCreateVector
         case languageUnavailable(NLLanguage)
     }
-    
-    private var embedding: NLContextualEmbedding
-    private var language: NLLanguage
-    
-    public var dimension: Int {
-        return embedding.dimension
-    }
+
+    private let embeddingMutex: Mutex<NLContextualEmbedding>
+    private let language: NLLanguage
+    public let dimension: Int
     
     required public convenience init() throws {
         try self.init(language: .english)
@@ -30,13 +29,39 @@ public class NLContextualEmbedder: EmbeddingProvider {
             throw EmbeddingError.languageUnavailable(self.language)
         }
         
-        self.embedding = _embedding
-        try self.embedding.load()
+        try _embedding.load()
+        
+        dimension = _embedding.dimension
+        embeddingMutex = Mutex(_embedding)
     }
     
     public func embed(content: String) async throws -> [Double] {
-        let embedding = try embedding.embeddingResult(for: content, language: language)
-        #warning("Finish this")
-        return []
+        // Serialize access: the underlying model is not safe to call concurrently.
+        try embeddingMutex.withLock { embedding in
+            let result = try embedding.embeddingResult(for: content, language: language)
+            
+            var tokenCount: Int = 0
+            var pooledVector: [Double] = Array(repeating: 0.0, count: embedding.dimension)
+     
+            // Create a pooled vector that adds up each dimension of every returned vector.
+            result.enumerateTokenVectors(in: content.startIndex..<content.endIndex) { vector, _ in
+                for index in 0..<embedding.dimension {
+                    pooledVector[index] += vector[index]
+                }
+                
+                tokenCount += 1
+                return true
+            }
+            
+            // Protect against divide-by-zero erros
+            guard tokenCount > 0 else { return [] }
+            
+            // Divide all of the dimensions by the
+            for i in 0..<embedding.dimension {
+                pooledVector[i] /= Double(tokenCount)
+            }
+            
+            return pooledVector
+        }
     }
 }

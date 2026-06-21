@@ -6,6 +6,7 @@
 //
 
 import NaturalLanguage
+import Synchronization
 
 extension IrisLanguage {
     var nlLanguage: NLLanguage {
@@ -16,35 +17,35 @@ extension IrisLanguage {
     }
 }
 
-public class NLEmbedder: EmbeddingProvider {
+@available(macOS 15.0, *)
+public final class NLEmbedder: EmbeddingProvider, Sendable {
     public enum EmbeddingError: Error {
         case couldNotCreateVector
         case languageUnavailable(NLLanguage)
     }
     
-    private var embedding: NLEmbedding
-        
-    public var dimension: Int {
-        return embedding.dimension
-    }
+    private let embeddingMutex: Mutex<NLEmbedding>
+    public let dimension: Int
     
     required public convenience init() throws {
         try self.init(language: .english)
     }
     
     public init(language: IrisLanguage) throws {
-        guard let embedding = NLEmbedding.sentenceEmbedding(for: language.nlLanguage) else {
+        guard let _embedding = NLEmbedding.sentenceEmbedding(for: language.nlLanguage) else {
             throw EmbeddingError.languageUnavailable(language.nlLanguage)
         }
-        
-        self.embedding = embedding
+        dimension = _embedding.dimension
+        embeddingMutex = Mutex(_embedding)
     }
     
     public func embed(content: String) async throws -> [Double] {
-        guard let embedding = embedding.vector(for: content) else {
-            throw EmbeddingError.couldNotCreateVector
+        try embeddingMutex.withLock { embedding in
+            guard let embedding = embedding.vector(for: content) else {
+                throw EmbeddingError.couldNotCreateVector
+            }
+            
+            return embedding
         }
-        
-        return embedding
     }
 }

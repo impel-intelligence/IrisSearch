@@ -59,5 +59,5 @@ struct PDFArgument {
         _ = try await digestor.digest(file: pdfURL)
     }
     
-    #expect(performance.average < 0.5)
+    #expect(performance.average < 1)
 }

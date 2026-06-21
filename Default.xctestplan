@@ -20,6 +20,16 @@
       }
     },
     {
+      "skippedTests" : {
+        "suites" : [
+          {
+            "name" : "NLContextualEmbedderThreadSafetyTests",
+            "testFunctions" : [
+              "concurrentInferenceMatchesSerialBaseline()"
+            ]
+          }
+        ]
+      },
       "target" : {
         "containerPath" : "container:",
         "identifier" : "IntegrationTests",

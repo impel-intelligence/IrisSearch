@@ -7,7 +7,7 @@
 
 import IrisCommon
 
-public protocol TextChunker {
+public protocol TextChunker: Sendable {
     init()
     
     func chunk(content: String) -> [String]
