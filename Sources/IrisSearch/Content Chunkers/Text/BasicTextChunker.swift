@@ -5,7 +5,7 @@
 //  Created by Taylor Lineman on 6/8/26.
 //
 
-public struct BasicTextChunker: TextChunker {
+public struct BasicTextChunker: TextChunker, Sendable {
     public init() { }
     
     public func chunk(content: String) -> [String] {

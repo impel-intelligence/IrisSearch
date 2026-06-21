@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "IrisSearch",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v15),
         .iOS(.v26)
     ],
     products: [

@@ -5,7 +5,7 @@
 //  Created by Taylor Lineman on 6/7/26.
 //
 
-public protocol EmbeddingProvider: AnyObject {
+public protocol EmbeddingProvider: AnyObject, Sendable {
     var dimension: Int { get }
         
     init() throws

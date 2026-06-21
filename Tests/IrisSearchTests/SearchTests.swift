@@ -20,7 +20,7 @@ class IrisDB_SearchTests {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        nonisolated(unsafe) let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
 
         try await database.createDocument(uuid: UUID(), title: "Original", description: "Original content", embeddableContent: [.text(content: "Original content")])
         try await database.createDocument(uuid: UUID(), title: "Different", description: "Different", embeddableContent: [.text(content: "Different")])

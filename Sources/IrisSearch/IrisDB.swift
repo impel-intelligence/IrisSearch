@@ -26,7 +26,7 @@ public enum IrisDBError: Error {
 ///     - doc-1.index
 ///     - doc-3.index
 /// - map.sqlite
-public final class IrisDB {
+public actor IrisDB {
     private static let databaseExtension = "irisdb"
     private static let indexExtension = "index"
     
@@ -36,6 +36,7 @@ public final class IrisDB {
     private let textEmbedder: EmbeddingProvider
     
     private let dbPool: DatabasePool
+    private let writeExecutor: KeyedExecutor<UUID> = KeyedExecutor()
     
     public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider, textChunker: TextChunker) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
@@ -55,7 +56,7 @@ public final class IrisDB {
         try initializeDB()
     }
     
-    private func initializeDB() throws {
+    private nonisolated func initializeDB() throws {
         var migrator = DatabaseMigrator()
         
         migrator.registerMigration("Create Documents Table") { db in
@@ -101,13 +102,25 @@ public final class IrisDB {
 }
 
 // MARK: CRUD
+// Read operations
+extension IrisDB {
+    public func readDocument(uuid: UUID) async throws -> IrisDocument? {
+        return try await dbPool.read { db in
+            guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
+            document.pieces = try document.request(for: IrisDocument.pieces).fetchAll(db)
+            return document
+        }
+    }
+}
+
+// Create, update and delete actions
 extension IrisDB {
     private func chunkEmbeddableContent(_ content: EmbeddableContent) -> [EmbeddableContent] {
         switch content {
         case .text(let content):
             let textChunks = textChunker.chunk(content: content)
             return textChunks.compactMap({ EmbeddableContent.text(content: $0) })
-        case .image(let content, caption: let caption):
+        case .image(_, _):
             break
         }
         
@@ -118,7 +131,7 @@ extension IrisDB {
         switch chunk {
         case .text(let content):
             return try await textEmbedder.embed(content: content).map({Float($0)})
-        case .image(let content, let caption):
+        case .image(_, _):
             return []
         }
     }
@@ -144,14 +157,37 @@ extension IrisDB {
         // Create a document object
         return IrisDocument(uuid: uuid, title: title, description: description, pieces: pieces)
     }
-        
+    
+    /// Creates a document entry in the database.
+    /// - Parameters:
+    ///   - uuid: The UUID of the document to create.
+    ///   - title: The title of the document, used for full text search.
+    ///   - description: A description of the document, used for full text search.
+    ///   - embeddableContent: The embeddable content, usually created by a ``Digester``
+    /// - Returns: A populated ``IrisDocument``, with an entry in the SQLite database & the FAISS index.
     @discardableResult
     public func createDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
+        return try await writeExecutor.run(uuid) {
+            // Call back into the IrisDB actor to perform the create document action. Ensures that the actual creation code runs within the actor's context and not on the task created by writeExecutor.
+            return try await self.performCreateDocument(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
+        }
+    }
+    
+    /// An internal function that handles actually creating documents.
+    ///
+    /// ``createDocument(uuid:title:description:embeddableContent:)`` submits this function to the writeExecutor to serialize database actions for the given `uuid`.
+    /// - Parameters:
+    ///   - uuid: The UUID of the document to create.
+    ///   - title: The title of the document, used for full text search.
+    ///   - description: A description of the document, used for full text search.
+    ///   - embeddableContent: The embeddable content, usually created by a ``Digester``
+    /// - Returns: A populated ``IrisDocument``, with an entry in the SQLite database & the FAISS index.
+    private func performCreateDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
         // Create a document object
-        let document = try await createDocumentObject(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
-
+        let document = try await self.createDocumentObject(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
+        
         // Insert the document into the database, capturing the inserted record (with its assigned rowID).
-        let insertedDocument = try await dbPool.write { db in
+        let insertedDocument = try await self.dbPool.write { db in
             var document = document
             try document.insert(db)
             
@@ -163,31 +199,45 @@ extension IrisDB {
             
             return document
         }
-
-        try textIndex.addDocument(document: insertedDocument)
-
+        
+        try self.textIndex.addDocument(document: insertedDocument)
+        
         return insertedDocument
+
     }
     
-    public func readDocument(uuid: UUID) async throws -> IrisDocument? {
-        return try await dbPool.read { db in
-            guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
-            document.pieces = try document.request(for: IrisDocument.pieces).fetchAll(db)
-            return document
+    /// Updates a document's entry in the database.
+    /// - Parameters:
+    ///   - uuid: The UUID of the document to update.
+    ///   - title: The new title of the document.
+    ///   - description: The new description for the document
+    ///   - embeddableContent: The new embeddable content, usually created by a ``Digester``
+    public func updateDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws {
+        try await writeExecutor.run(uuid) {
+            try await self.performUpdateDocument(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
         }
     }
     
-    public func updateDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent], chunker: TextChunker) async throws {
+    /// An internal function that handles actually updating 
+    /// documents.
+    ///
+    /// ``updateDocument(uuid:title:description:embeddableContent:)`` submits this function to the writeExecutor to serialize database actions for the given `uuid`.
+    /// - Parameters:
+    ///   - uuid: The UUID of the document to update.
+    ///   - title: The new title of the document.
+    ///   - description: The new description for the document
+    ///   - embeddableContent: The new embeddable content, usually created by a ``Digester``
+    private func performUpdateDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws {
         // Create a document object
         let newDocument = try await createDocumentObject(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
-
+        
         let updatedDocument = try await dbPool.write { [newDocument] db in
             // We need to get the original document so we can find set the new document's id.
             guard let existingDocument = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { throw IrisDBError.documentNotFound }
-
+            
             var newDocument = newDocument
             newDocument.id = existingDocument.id // Update the ID to match the existing document.
-
+            
             try newDocument.update(db)
             
             // Delete all existing document pieces
@@ -198,15 +248,29 @@ extension IrisDB {
                 newDocument.pieces[index].parentID = newDocument.id
                 try newDocument.pieces[index].insert(db)
             }
-
+            
             return newDocument
         }
-
+        
         try textIndex.removeDocument(document: updatedDocument)
         try textIndex.addDocument(document: updatedDocument)
+
     }
     
+    
+    /// Delete a document by `uuid`.
+    /// - Parameter uuid: The UUID of the document to delete from the database.
     public func deleteDocument(uuid: UUID) async throws {
+        try await writeExecutor.run(uuid) {
+            try await self.performDeleteDocument(uuid: uuid)
+        }
+    }
+    
+    /// Delete a document by `uuid`.
+    ///
+    /// ``deleteDocument(uuid:)`` submits this function to the writeExecutor to serialize database actions for the given `uuid`.
+    /// - Parameter uuid: The UUID of the document to delete from the database.
+    private func performDeleteDocument(uuid: UUID) async throws {
         let tmpDocument = try await dbPool.read { db in
             return try IrisDocument.fetchOne(db, key: ["uuid": uuid])
         }
@@ -214,17 +278,12 @@ extension IrisDB {
         _ = try await dbPool.write { db in
             try IrisDocument.deleteOne(db, key: ["uuid": uuid])
         }
-
+        
         // Remove the document we just deleted from the global index
         if let tmpDocument {
             try textIndex.removeDocument(document: tmpDocument)
         }
     }
-}
-
-public struct IrisQuery {
-    let text: String
-    // imageData: Data
 }
 
 // MARK: Search
