@@ -8,23 +8,30 @@
 import Foundation
 
 
-/// <#Description#>
+/// An execution manager that serializes tasks by key.
+///
+/// Tasks submitted with the same key, complete in submission order without any overlap. Tasks with different keys execute concurrently.
 public actor KeyedExecutor<Key: Hashable & Sendable>  {
-    /// <#Description#>
+    /// A dictionary tracking the most recently submitted task per key. Each task in this dictionary waits on any previous tasks submitted with the same key. This behavior stacks, creating a chain of waiting tasks, where the tail is tracked in this structure.
     var executionChainTails: [Key: Task<Void, Never>] = [:]
 
     public init() {}
     
+    /// Run and immediately await the value of an operation.
+    /// - Parameters:
+    ///   - key: The key to submit the operation with.
+    ///   - operation: The operation to run. Will wait for other operations with the same key to complete before executing.
+    /// - Returns: The `Success` output of the operation.
     @discardableResult
     public func run<Success: Sendable>(_ key: Key, _ operation: @Sendable @escaping () async throws -> Success) async throws -> Success {
         return try await submit(key, operation).value
     }
     
-    /// <#Description#>
+    /// Submit an operation to the executor, but do not wait for it to return.
     /// - Parameters:
-    ///   - key: <#key description#>
-    ///   - operation: <#operation description#>
-    /// - Returns: <#description#>
+    ///   - key: The key to submit the operation with.
+    ///   - operation: The operation to run. Will wait for other operations with the same key to complete before executing.
+    /// - Returns: The task that the given operation will run on. To wait for the value, you can await this task's value.
     @discardableResult
     public func submit<Success: Sendable>(_ key: Key, _ operation: @Sendable @escaping () async throws -> Success) -> Task<Success, Error> {
         // Retrieve the previous tail. The new tail is updated later in the function. Since this is an actor and there are no awaits between here and the setting, the update is atomic.
