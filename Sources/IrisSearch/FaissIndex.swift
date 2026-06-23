@@ -202,12 +202,27 @@ extension FaissIndex {
     /// - Parameters:
     ///   - query: The query embedding.
     ///   - k: The number of results to request.
-    /// - Returns: The IDs for found documents.
-    func search(query: [Float], kItems k: Int) throws -> [Int] {
+    /// - Returns: The matching document IDs paired with their cosine similarity  score.
+    func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
         var query = query
         faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &query)
 
         let index: IDMap = try getGlobalIndex()
+
+        let searchResults = try index.search([query], k: k)
+
+        // We only ever pass a single query, so take the first row of each.
+        let ids = searchResults.labels.first ?? []
+        let distances = searchResults.distances.first ?? []
+
+        return zip(ids, distances).map { (id: $0, distance: $1) }
+    }
+    
+    func search(query: [Float], kItems k: Int, collection: UUID) throws -> [Int] {
+        var query = query
+        faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &query)
+        
+        let index: FlatIndex = try getDocumentIndex(uuid: collection)
         
         let searchResults = try index.search([query], k: k)
         let ids = searchResults.labels.flatMap { $0 }
