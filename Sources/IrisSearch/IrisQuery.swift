@@ -9,5 +9,9 @@
 public struct IrisQuery: Sendable {
     let text: String
     // imageData: Data
+    
+    public init(text: String) {
+        self.text = text
+    }
 }
 
