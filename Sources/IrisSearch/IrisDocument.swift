@@ -16,6 +16,7 @@ struct SearchableDocument: Codable, FetchableRecord, TableRecord {
     public var id: Int64
     public var title: String
     public var description: String
+    public var rank: Double // The FTS5 hidden rank column
 }
 
 
@@ -65,7 +66,7 @@ struct SearchableDocumentPiece: Codable, FetchableRecord, TableRecord {
     public var id: Int64
     public var textContent: String
     public var parentID: Int64
-    public var rank: Int64 // The FTS5 hidden rank column
+    public var rank: Double // The FTS5 hidden rank column
 }
 
 /// A piece of a greater `IrisDocument`.
