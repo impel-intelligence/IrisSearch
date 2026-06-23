@@ -393,7 +393,7 @@ extension IrisDB {
                 syntacticDocumentInput,
                 syntacticDocumentPieceInput,
                 semanticSearchInput
-            ], weights: [1/3, 1/3, 1/3])
+            ], weights: [2/3, 1/6, 1/6])
         case .reciprocalRankedFusion:
             // Take just the document ids from the searched document pieces
             let syntacticDocumentIds = syntacticTextDocuments.map { Int($0.id) }
