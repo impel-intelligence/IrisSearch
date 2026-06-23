@@ -329,6 +329,13 @@ extension IrisDB {
     }
     
     public func search(query: IrisQuery, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> [IrisDocument] {
+        try await searchWithTrace(query: query, nItems: nItems, ranking: ranking).results
+    }
+
+    /// Performs the same hybrid search as ``search(query:nItems:ranking:)`` but additionally returns a
+    /// ``SearchTrace`` recording which retrieval channel(s) surfaced each result and at what per-channel
+    /// rank & score. Intended for debugging the retrieval pipeline.
+    public func searchWithTrace(query: IrisQuery, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> (results: [IrisDocument], trace: SearchTrace) {
         let maximumPieces = try await dbPool.read { db in
             return try DocumentPiece.fetchCount(db)
         }
@@ -379,6 +386,34 @@ extension IrisDB {
             return documents
         })
                 
+        // Record which retrieval channel surfaced each document (and at what rank & score) so the
+        // provenance survives fusion. Keyed by `documents` row id.
+        var hitsByDocID: [Int: [ChannelHit]] = [:]
+
+        for (rank, result) in semanticTextResults.enumerated() {
+            hitsByDocID[result.id, default: []].append(
+                ChannelHit(channel: .semanticText, rank: rank, score: Double(result.distance))
+            )
+        }
+
+        for (rank, document) in syntacticTextDocuments.enumerated() {
+            hitsByDocID[Int(document.id), default: []].append(
+                ChannelHit(channel: .syntacticDocument, rank: rank, score: document.rank)
+            )
+        }
+
+        // A document can match through several pieces. Attribute the match to the parent document and
+        // keep only the best (lowest) ranked piece so each document gets a single piece-channel hit.
+        var bestPieceHitByDocID: [Int: ChannelHit] = [:]
+        for (rank, piece) in syntacticTextDocumentPieces.enumerated() {
+            let parentID = Int(piece.parentID)
+            if let existing = bestPieceHitByDocID[parentID], existing.rank <= rank { continue }
+            bestPieceHitByDocID[parentID] = ChannelHit(channel: .syntacticDocumentPiece, rank: rank, score: piece.rank, matchedPieceID: Int(piece.id))
+        }
+        for (docID, hit) in bestPieceHitByDocID {
+            hitsByDocID[docID, default: []].append(hit)
+        }
+
         // Rank the document IDs using the selected ranking functions.
         let rankedDocumentIDs: [Int]
         
@@ -393,7 +428,7 @@ extension IrisDB {
                 syntacticDocumentInput,
                 syntacticDocumentPieceInput,
                 semanticSearchInput
-            ], weights: [1/3, 1/3, 1/3])
+            ], weights: [2/3, 1/6, 1/6])
         case .reciprocalRankedFusion:
             // Take just the document ids from the searched document pieces
             let syntacticDocumentIds = syntacticTextDocuments.map { Int($0.id) }
@@ -434,7 +469,30 @@ extension IrisDB {
         
         // Limit the kItems the user requested to the number of documents we found.
         let limit = nItems.clamped(to: 0...compactOrdered.count)
-        return Array(compactOrdered.prefix(upTo: limit))
+        let results = Array(compactOrdered.prefix(upTo: limit))
+
+        // Annotate every resolved candidate (in fused-rank order) with its retrieval-channel provenance.
+        let documentTraces: [DocumentTrace] = compactOrdered.compactMap { document in
+            guard let rawID = document.id, let fusedRank = rankByID[Int(rawID)] else { return nil }
+            let docID = Int(rawID)
+            return DocumentTrace(
+                id: docID,
+                uuid: document.uuid,
+                title: document.title,
+                fusedRank: fusedRank,
+                hits: hitsByDocID[docID] ?? []
+            )
+        }
+
+        let trace = SearchTrace(
+            query: query.text,
+            ranking: ranking,
+            searchLimit: searchLimit,
+            returnedCount: results.count,
+            documents: documentTraces
+        )
+
+        return (results, trace)
     }
 }
 

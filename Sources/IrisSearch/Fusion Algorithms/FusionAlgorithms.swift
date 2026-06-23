@@ -5,7 +5,7 @@
 //  Created by Taylor Lineman on 6/23/26.
 //
 
-public enum FusionAlgorithm {
+public enum FusionAlgorithm: Sendable {
     case relativeScoreFusion
     case reciprocalRankedFusion
 }

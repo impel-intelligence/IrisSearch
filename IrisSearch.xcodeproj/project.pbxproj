@@ -30,6 +30,7 @@
 		D79FD2E03BF2FB0373C88A03 /* ReciprocalRankedFusion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A665D57A0F6808E01ADACC0 /* ReciprocalRankedFusion.swift */; };
 		DB51C93D2FEAEC0B00A17D72 /* RelativeScoreFusion.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51C93C2FEAEC0700A17D72 /* RelativeScoreFusion.swift */; };
 		DB51C93F2FEAF15700A17D72 /* FusionAlgorithms.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51C93E2FEAF15400A17D72 /* FusionAlgorithms.swift */; };
+		DB51C9422FEAF96300A17D72 /* SearchTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51C9412FEAF96300A17D72 /* SearchTrace.swift */; };
 		F4E4B5F0C6472776D9446F15 /* IrisDB.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B1B708AA075E1FBBF23A831 /* IrisDB.swift */; };
 		F76FD6F2E62576102CD7B1C5 /* NLContextualEmbedder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74EE2040637DC93749DB227A /* NLContextualEmbedder.swift */; };
 		FA76CE2214D78B9B2CF25A5E /* IrisCommon.framework in Dependencies */ = {isa = PBXBuildFile; fileRef = D5C1DB60D761EFF2AC7D201C /* IrisCommon.framework */; };
@@ -147,6 +148,7 @@
 		D5C1DB60D761EFF2AC7D201C /* IrisCommon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = IrisCommon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB51C93C2FEAEC0700A17D72 /* RelativeScoreFusion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelativeScoreFusion.swift; sourceTree = "<group>"; };
 		DB51C93E2FEAF15400A17D72 /* FusionAlgorithms.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FusionAlgorithms.swift; sourceTree = "<group>"; };
+		DB51C9412FEAF96300A17D72 /* SearchTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTrace.swift; sourceTree = "<group>"; };
 		ECDB1304B1348720D77B442E /* IrisSearch-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "IrisSearch-Info.plist"; sourceTree = "<group>"; };
 		FFE60CB16DE69BF2A6BF7D34 /* Digester.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Digester.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -239,6 +241,7 @@
 				45AB83035C15ABEFE920678D /* Extensions */,
 				2F20AAEB445856739FE742C1 /* Fusion Algorithms */,
 				6F49A3ADF8F4D4CEBBE439D4 /* FaissIndex.swift */,
+				DB51C9412FEAF96300A17D72 /* SearchTrace.swift */,
 				8B1B708AA075E1FBBF23A831 /* IrisDB.swift */,
 				6837DF9C996F5AFE4A36C549 /* IrisDocument.swift */,
 				1363453AE388F50BFB6897DE /* IrisLanguage.swift */,
@@ -476,6 +479,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DB51C93D2FEAEC0B00A17D72 /* RelativeScoreFusion.swift in Sources */,
+				DB51C9422FEAF96300A17D72 /* SearchTrace.swift in Sources */,
 				A29A99521A41F5457093EB18 /* BasicImageChunker.swift in Sources */,
 				7E67C535198AD2A584B72531 /* ImageChunker.swift in Sources */,
 				CC0EA9D8A283C981028D39F2 /* BasicTextChunker.swift in Sources */,

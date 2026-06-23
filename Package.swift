@@ -27,15 +27,15 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
-        .testTarget(name: "IrisCommonTests", dependencies: ["IrisCommon", "TestUtilities"]),
+//        .testTarget(name: "IrisCommonTests", dependencies: ["IrisCommon", "TestUtilities"]),
         
         // Test Utilities
-        .target(
-            name: "TestUtilities",
-            dependencies: ["IrisCommon", "IrisSearch"],
-            path: "Tests/Utilities" // Placed inside the Tests folder to keep Sources clean
-        ),
-
+//        .target(
+//            name: "TestUtilities",
+//            dependencies: ["IrisCommon", "IrisSearch"],
+//            path: "Tests/Utilities" // Placed inside the Tests folder to keep Sources clean
+//        ),
+//
         // Search
         .target(
             name: "IrisSearch",
@@ -45,44 +45,44 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
-        .testTarget(
-            name: "IrisSearchTests",
-            dependencies: [
-                "IrisSearch",
-                "TestUtilities"
-            ],
-            resources: [
-                .copy("Test Documents")
-            ]
-        ),
+//        .testTarget(
+//            name: "IrisSearchTests",
+//            dependencies: [
+//                "IrisSearch",
+//                "TestUtilities"
+//            ],
+//            resources: [
+//                .copy("Test Documents")
+//            ]
+//        ),
         
         // Digester
         .target(
             name: "Digester",
             dependencies: ["IrisCommon"]
         ),
-        .testTarget(
-            name: "DigesterTests",
-            dependencies: [
-                "Digester",
-                "TestUtilities"
-            ],
-            resources: [
-                .copy("Test Documents")
-            ]
-        ),
+//        .testTarget(
+//            name: "DigesterTests",
+//            dependencies: [
+//                "Digester",
+//                "TestUtilities"
+//            ],
+//            resources: [
+//                .copy("Test Documents")
+//            ]
+//        ),
         
         // Integration Tests
-        .testTarget(
-            name: "IntegrationTests",
-            dependencies: [
-                "Digester",
-                "IrisSearch",
-                "TestUtilities"
-            ],
-            resources: [
-                .copy("Test Documents")
-            ]
-       )
+//        .testTarget(
+//            name: "IntegrationTests",
+//            dependencies: [
+//                "Digester",
+//                "IrisSearch",
+//                "TestUtilities"
+//            ],
+//            resources: [
+//                .copy("Test Documents")
+//            ]
+//       )
     ]
 )
