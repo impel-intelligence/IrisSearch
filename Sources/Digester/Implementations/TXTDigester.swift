@@ -10,7 +10,7 @@ import IrisCommon
 import Foundation
 
 final class TXTDigester: FileDigester {
-    static let fileTypes: [UTType] = [.text, .plainText, .utf8PlainText, .utf16PlainText, .utf16ExternalPlainText, UTType(importedAs: "com.unknown.md"), UTType(importedAs: "net.daringfireball.markdown")]
+    static let fileTypes: [UTType] = [.text, .plainText, .utf8PlainText, .utf16PlainText, .utf16ExternalPlainText, UTType(importedAs: "net.daringfireball.markdown")]
     
     required init() { }
     
