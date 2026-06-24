@@ -35,7 +35,7 @@ final class PDFDigester: FileDigester, Sendable {
         let index: Int
     }
 
-    static let fileTypes: [UTType] = [.pdf, UTType("com.adobe.pdf")!]
+    static let fileTypes: [UTType] = [.pdf]
     
     required init() {
 
