@@ -16,7 +16,7 @@ let package = Package(
         .library(name: "Digester", targets: ["Digester"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.3.2"),
+        .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.4.1"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0")
     ],
     targets: [
