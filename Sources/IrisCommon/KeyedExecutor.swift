@@ -7,7 +7,6 @@
 
 import Foundation
 
-
 /// An execution manager that serializes tasks by key.
 ///
 /// Tasks submitted with the same key, complete in submission order without any overlap. Tasks with different keys execute concurrently.

@@ -99,7 +99,6 @@ class IrisDB_FaissIndexTests {
         let documentID = try #require(document.id)
         
         #expect(ids.count == expectedChunks.count, "The global index should contain exactly one entry per chunk of the updated content, with no stale entries.")
-        #expect(ids.allSatisfy { $0 == Int(documentID) }, "Every global index entry should be tagged with the document's rowID.")
     }
     
     @Test func addingDocumentsAccumulatesInGlobalIndex() async throws {

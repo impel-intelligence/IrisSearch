@@ -52,13 +52,13 @@ final class FaissIndex {
         try addDocumentToGlobalIndex(document: document)
     }
     
-    public func removeDocument(document: IrisDocument) throws {
-        let indexURL = IndexLocation.document(uuid: document.uuid).filePath(in: indexLocation)
+    public func removeDocument(documentID: UUID, pieceIDs: [Int]) throws {
+        let indexURL = IndexLocation.document(uuid: documentID).filePath(in: indexLocation)
         try FileManager.default.removeItem(at: indexURL)
         
-        try removeDocumentFromGlobalIndex(document: document)
+        try removeDocumentFromGlobalIndex(ids: pieceIDs)
         // Remove the cached index for the document.
-        cachedDocumentIndices.removeValue(forKey: document.uuid)
+        cachedDocumentIndices.removeValue(forKey: documentID)
     }
 }
 
@@ -95,15 +95,13 @@ extension FaissIndex {
         return index
     }
     
-    private func removeDocumentFromGlobalIndex(document: IrisDocument) throws {
+    private func removeDocumentFromGlobalIndex(ids: [Int]) throws {
         let indexURL = IndexLocation.global.filePath(in: indexLocation)
-        
-        guard let documentID = document.id else { throw IrisDBError.documentNotFound }
         
         let index: IDMap = try getGlobalIndex()
         
         // Delete all indices related to this document.
-        try index.removeIds([Int(documentID)])
+        try index.removeIds(ids)
         
         // Save the global index
         try index.saveToFile(indexURL.path(percentEncoded: false))
@@ -112,46 +110,20 @@ extension FaissIndex {
     private func addDocumentToGlobalIndex(document: IrisDocument) throws {
         let indexURL = IndexLocation.global.filePath(in: indexLocation)
         
-        guard let documentID = document.id else { throw IrisDBError.documentNotFound }
-        
-        let index: IDMap = try getGlobalIndex()
-        
-        var embeddings: [[Float]] = []
-        var ids: [Int] = []
-        
-        for var embedding in document.pieces.map(\.embeddings) {
-            faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embedding)
-            embeddings.append(embedding)
-            ids.append(Int(documentID))
-        }
-        
-        // Check if the index needs to be trained, if so train.
-        if !index.isTrained {
-            try index.train(embeddings)
-        }
-        
-        // Add the data to the index with their corresponding IDs
-        try index.add(embeddings, ids: ids)
-        // Save the global index
-        try index.saveToFile(indexURL.path(percentEncoded: false))
-    }
-    
-    private func refreshGlobalIndex(documents: [IrisDocument]) throws {
-        let indexURL = IndexLocation.global.filePath(in: indexLocation)
-                
         // Create parallel arrays of embeddings and their corresponding document indices
         var embeddings: [[Float]] = []
         var ids: [Int] = []
         
-        for document in documents {
-            guard let documentID = document.id else { continue }
-            // For each embedding in the document, add it with the document's rowID as its ID
-            for var embedding in document.pieces.map(\.embeddings) {
-                faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embedding)
-                embeddings.append(embedding)
-                ids.append(Int(documentID))
-            }
+        // For each embedding in the document, add it with the pieces's rowID as its ID
+        for piece in document.pieces {
+            guard let pieceID = piece.id else { continue }
+            
+            var embedding = piece.embeddings
+            faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embedding)
+            embeddings.append(embedding)
+            ids.append(Int(pieceID))
         }
+
         
         let index: IDMap = try getGlobalIndex()
         
@@ -202,7 +174,7 @@ extension FaissIndex {
     /// - Parameters:
     ///   - query: The query embedding.
     ///   - k: The number of results to request.
-    /// - Returns: The matching document IDs paired with their cosine similarity  score.
+    /// - Returns: The matching piece IDs paired with their cosine similarity  score.
     func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
         var query = query
         faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &query)
@@ -214,8 +186,9 @@ extension FaissIndex {
         // We only ever pass a single query, so take the first row of each.
         let ids = searchResults.labels.first ?? []
         let distances = searchResults.distances.first ?? []
-
-        return zip(ids, distances).map { (id: $0, distance: $1) }
+        
+        // If there are not enough vectors faiss adds -1s to fill the array. Get rid of these in our map.
+        return zip(ids, distances).filter { $0.0 != -1 }.map { (id: $0, distance: $1) }
     }
     
     func search(query: [Float], kItems k: Int, collection: UUID) throws -> [Int] {

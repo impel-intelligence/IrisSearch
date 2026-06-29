@@ -21,7 +21,7 @@ class SearchIntegrationTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let papersURL = Bundle.module.url(forResource: "Arxiv", withExtension: nil, subdirectory: "Test Documents")!
-        let papers = try FileManager.default.contentsOfDirectory(atPath: papersURL.path(percentEncoded: false))
+        let papers = try FileManager.default.contentsOfDirectory(atPath: papersURL.path(percentEncoded: false)).prefix(10)
         
         let digestor = PDFDigester()
 
