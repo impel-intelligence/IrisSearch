@@ -248,30 +248,35 @@ extension IrisDB {
         // Create a document object
         let newDocument = try await createDocumentObject(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
         
-        let updatedDocument = try await dbPool.write { [newDocument] db in
+        let (updatedDocument, oldPieceIDs) = try await dbPool.write { [newDocument] db -> (IrisDocument, [Int]) in
             // We need to get the original document so we can find set the new document's id.
             guard let existingDocument = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { throw IrisDBError.documentNotFound }
-            
+
+            let oldPieceIDs = try existingDocument
+                .request(for: IrisDocument.pieces)
+                .fetchAll(db)
+                .compactMap(\.id)
+                .map({ Int($0) })
+
             var newDocument = newDocument
             newDocument.id = existingDocument.id // Update the ID to match the existing document.
-            
+
             try newDocument.update(db)
-            
+
             // Delete all existing document pieces
             try newDocument.request(for: IrisDocument.pieces).deleteAll(db)
-            
+
             // Re-insert the document pieces in-place
             for index in newDocument.pieces.indices {
                 newDocument.pieces[index].parentID = newDocument.id
                 try newDocument.pieces[index].insert(db)
             }
-            
-            return newDocument
-        }
-        
-        try textIndex.removeDocument(document: updatedDocument)
-        try textIndex.addDocument(document: updatedDocument)
 
+            return (newDocument, oldPieceIDs)
+        }
+
+        try textIndex.removeDocument(documentID: uuid, pieceIDs: oldPieceIDs)
+        try textIndex.addDocument(document: updatedDocument)
     }
     
     
@@ -289,7 +294,9 @@ extension IrisDB {
     /// - Parameter uuid: The UUID of the document to delete from the database.
     private func performDeleteDocument(uuid: UUID) async throws {
         let tmpDocument = try await dbPool.read { db in
-            return try IrisDocument.fetchOne(db, key: ["uuid": uuid])
+            guard var doc = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return IrisDocument?.none }
+            doc.pieces = try doc.request(for: IrisDocument.pieces).fetchAll(db)
+            return doc
         }
         
         _ = try await dbPool.write { db in
@@ -298,37 +305,43 @@ extension IrisDB {
         
         // Remove the document we just deleted from the global index
         if let tmpDocument {
-            try textIndex.removeDocument(document: tmpDocument)
+            let oldIDs = tmpDocument.pieces.compactMap(\.id).map({ Int($0) })
+            try textIndex.removeDocument(documentID: uuid, pieceIDs: oldIDs)
         }
     }
 }
 
+public struct SearchResult: Sendable {
+    public let document: IrisDocument
+    public let importantPieces: [DocumentPiece]
+}
+
 // MARK: Search
 extension IrisDB {
-    public func search(query: IrisQuery, nItems: Int = 10, within documentIDs: [UUID]) async throws -> [IrisDocument] {
-        let documents = try await readDocuments(uuids: documentIDs)
-        
-        guard !documents.isEmpty else { throw IrisDBError.noDocuments }
-        
-        // Get the total number of pieces the requested documents make up of.
-        let totalPieces = documents.reduce(0) { partialResult, document in
-            partialResult + document.pieces.count
-        }
-        
-        // Search for twice as many items as the user requested to give better ranking down the line.
-        let searchLimit = (nItems * 2).clamped(to: 0...totalPieces)
-        
-        let unicodeNormalizedQuery = query.text.precomposedStringWithCompatibilityMapping
-        
-        // Text index searching
-        let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
-        
-        let semanticTextIds = try textIndex.search(query: textEmbedding, kItems: searchLimit)
-
-        return []
-    }
+//    public func search(query: IrisQuery, nItems: Int = 10, within documentIDs: [UUID]) async throws -> [IrisDocument] {
+//        let documents = try await readDocuments(uuids: documentIDs)
+//        
+//        guard !documents.isEmpty else { throw IrisDBError.noDocuments }
+//        
+//        // Get the total number of pieces the requested documents make up of.
+//        let totalPieces = documents.reduce(0) { partialResult, document in
+//            partialResult + document.pieces.count
+//        }
+//        
+//        // Search for twice as many items as the user requested to give better ranking down the line.
+//        let searchLimit = (nItems * 2).clamped(to: 0...totalPieces)
+//        
+//        let unicodeNormalizedQuery = query.text.precomposedStringWithCompatibilityMapping
+//        
+//        // Text index searching
+//        let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
+//        
+//        let semanticTextIds = try textIndex.search(query: textEmbedding, kItems: searchLimit)
+//
+//        return []
+//    }
     
-    public func search(query: IrisQuery, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> [IrisDocument] {
+    public func search(query: IrisQuery, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> [SearchResult] {
         let maximumPieces = try await dbPool.read { db in
             return try DocumentPiece.fetchCount(db)
         }
@@ -343,25 +356,8 @@ extension IrisDB {
         // Text index searching
         let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
 
-        let semanticTextResults: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit)
+        let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit)
         
-        // Document Database Search
-        let syntacticTextDocuments: [SearchableDocument] = (try await dbPool.read { db in
-            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
-                return []
-            }
-            
-            // Search with the query interface or SQL and rank using internal BM25 function.
-            let documents = try SearchableDocument
-                .matching(pattern)
-                .select(Column("id"), Column("title"), Column("description"), Column.rank)
-                .order(Column.rank)
-                .limit(searchLimit)
-                .fetchAll(db)
-            
-            return documents
-        })
-
         // Document Piece Database Search
         let syntacticTextDocumentPieces: [SearchableDocumentPiece] = (try await dbPool.read { db in
             guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
@@ -378,63 +374,174 @@ extension IrisDB {
 
             return documents
         })
-                
-        // Rank the document IDs using the selected ranking functions.
+        
+        let semanticDocumentPieces = try await dbPool.read { db in
+            return try DocumentPiece
+                .filter(semanticTextPieces.map(\.id).contains(Column("id")))
+                .fetchAll(db)
+        }
+        
+        // Rank the piece IDs using the selected ranking functions.
+        let rankedPieceIDs: [Int]
+        
+        switch ranking {
+        case .relativeScoreFusion:
+            // Take document ids and their BM25 score. Use negative BM25 rank since lower is better out of FTS5.
+            let syntacticDocumentPieceInput: [(Int, Double)] = syntacticTextDocumentPieces.map({ (Int($0.id), -$0.rank) })
+            let semanticSearchInput: [(Int, Double)] = semanticTextPieces.map({ ($0.id, Double($0.distance)) })
+            
+            rankedPieceIDs = try RelativeScoreFusion.rank(inputs: [
+                syntacticDocumentPieceInput,
+                semanticSearchInput
+            ], weights: [1/2, 1/2])
+        case .reciprocalRankedFusion:
+            // Take just the document ids from the searched document pieces.
+            let syntacticDocumentPieceIds = syntacticTextDocumentPieces.map({Int($0.id)})
+            
+            // Take just ordered IDs from the semantic search results.
+            let semanticTextIds = semanticTextPieces.map(\.id)
+            
+            rankedPieceIDs = ReciprocalRankedFusion.rank(inputs: [
+                semanticTextIds,
+                syntacticDocumentPieceIds,
+            ])
+        }
+        
+        // Map Piece ID to the Parent Document ID
+        var pieceParentDocuments: [Int: Int] = [:]
+        
+        // Map semantic results
+        for piece in semanticDocumentPieces {
+            guard let id = piece.id, let parentID = piece.parentID else { continue }
+            pieceParentDocuments[Int(id)] = Int(parentID)
+        }
+        
+        // Map syntactic (FTS5) results
+        for piece in syntacticTextDocumentPieces {
+            pieceParentDocuments[Int(piece.id)] = Int(piece.parentID)
+        }
+        
+        // Array tracking Document ID: Smallest Piece Distance
+        var semanticDocumentsWithBestScore: [Int: Double] = [:]
+        
+        for piece in semanticTextPieces {
+            guard let parentID = pieceParentDocuments[piece.id] else { continue }
+            let currentDistance = semanticDocumentsWithBestScore[parentID, default: -.greatestFiniteMagnitude]
+            semanticDocumentsWithBestScore[parentID] = max(currentDistance, Double(piece.distance))
+        }
+        
+        // Array tracking Document ID: Smallest Rank
+        var syntacticDocumentsWithBestScore: [Int: Double] = [:]
+        
+        for piece in syntacticTextDocumentPieces {
+            let parentID: Int = Int(piece.parentID)
+            let currentRank: Double = syntacticDocumentsWithBestScore[parentID, default: -.greatestFiniteMagnitude]
+            syntacticDocumentsWithBestScore[parentID] = max(currentRank, -piece.rank)
+        }
+
+        // Search documents by their title and description.
+        let syntacticTextDocuments: [SearchableDocument] = (try await dbPool.read { db in
+            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
+                return []
+            }
+            
+            // Search with the query interface or SQL and rank using internal BM25 function.
+            let documents = try SearchableDocument
+                .matching(pattern)
+                .select(Column("id"), Column("title"), Column("description"), Column.rank)
+                .order(Column.rank)
+                .limit(searchLimit)
+                .fetchAll(db)
+            
+            return documents
+        })
+        
         let rankedDocumentIDs: [Int]
         
         switch ranking {
         case .relativeScoreFusion:
-            // Take document ids and their BM25 score
-            let syntacticDocumentInput: [(Int, Double)] = syntacticTextDocuments.map({ (Int($0.id), $0.rank) })
-            let syntacticDocumentPieceInput: [(Int, Double)] = syntacticTextDocumentPieces.map({ (Int($0.id), $0.rank) })
-            let semanticSearchInput: [(Int, Double)] = semanticTextResults.map({ ($0.id, Double($0.distance)) })
-
-            rankedDocumentIDs = try RelativeScoreFusion.rank(inputs: [
-                syntacticDocumentInput,
-                syntacticDocumentPieceInput,
-                semanticSearchInput
-            ], weights: [2/3, 1/6, 1/6])
-        case .reciprocalRankedFusion:
-            // Take just the document ids from the searched document pieces
-            let syntacticDocumentIds = syntacticTextDocuments.map { Int($0.id) }
+            // Take document ids and their BM25 score. Use negative BM25 rank since lower is better out of FTS5.
+            let syntacticDocumentPieceInput: [(Int, Double)] = syntacticDocumentsWithBestScore.map { (id: $0.key, score: $0.value) }
+            let semanticSearchInput: [(Int, Double)] = semanticDocumentsWithBestScore.map { (id: $0.key, score: $0.value) }
+            let documentSearchInput: [(Int, Double)] = syntacticTextDocuments.map { (id: Int($0.id), score: -$0.rank ) }
             
+            rankedDocumentIDs = try RelativeScoreFusion.rank(inputs: [
+                syntacticDocumentPieceInput,
+                semanticSearchInput,
+                documentSearchInput
+            ], weights: [1/3, 1/3, 1/3])
+        case .reciprocalRankedFusion:
             // Take just the document ids from the searched document pieces.
-            let syntacticDocumentPieceIds = syntacticTextDocumentPieces.map({Int($0.id)})
-
+            let syntacticDocumentPieceIds = syntacticDocumentsWithBestScore.sortedByValueThenKey().map(\.key)
+            
             // Take just ordered IDs from the semantic search results.
-            let semanticTextIds = semanticTextResults.flatMap({$0.id})
+            let semanticTextIds = semanticDocumentsWithBestScore.sortedByValueThenKey().map(\.key)
+            
+            let documentSearchInput = syntacticTextDocuments.reduce(into: [Int: Double]()) { partialResult, doc in
+                partialResult[Int(doc.id)] = -doc.rank
+            }.sortedByValueThenKey().map(\.key)
             
             rankedDocumentIDs = ReciprocalRankedFusion.rank(inputs: [
                 semanticTextIds,
                 syntacticDocumentPieceIds,
-                syntacticDocumentIds
+                documentSearchInput
             ])
         }
         
-        // Grab all of the documents we found from the database, they will be sorted back into rank next.
+        // Save the ranking (list index) for every piece ID. Will be used for reconstructing the ranking after database fetches.
+        let pieceRanksByID: [Int: Int] = Dictionary(uniqueKeysWithValues: rankedPieceIDs.enumerated().map { ($1, $0) })
+
+        // Save the ranking (list index) for every document ID. Will be used for reconstructing the ranking after database fetches.
+        let documentRanksByID: [Int: Int] = Dictionary(uniqueKeysWithValues: rankedDocumentIDs.enumerated().map { ($1, $0) })
+
+        // Any pieces that were actually surfaced by the piece searching
+        let surfacedPieceIDs = Set(semanticTextPieces.map(\.id) + syntacticTextDocumentPieces.map { Int($0.id) })
+
+        // Take the top n ranked documents.
+        let limitedDocumentIDs = Array(rankedDocumentIDs.prefix(nItems))
+
+        // Find all of the documents that match the limited documents we just made, and load their pieces.
         let searchedDocuments = try await dbPool.read { db in
-            return try IrisDocument.filter(rankedDocumentIDs.contains(Column("id"))).fetchAll(db)
+            return try IrisDocument.filter(limitedDocumentIDs.contains(Column("id"))).fetchAll(db)
         }
         
-        // A map from id -> rank position for O(1) rank lookup.
-        let rankByID: [Int: Int] = Dictionary(uniqueKeysWithValues: rankedDocumentIDs.enumerated().map { ($1, $0) })
-        
-        // Pre-size an array for ordered results and place docs directly by rank
-        var orderedByRank = Array<IrisDocument?>(repeating: nil, count: rankByID.count)
+        var orderedByRank = Array<IrisDocument?>(repeating: nil, count: limitedDocumentIDs.count)
         
         // O(n) loop over the retrieved documents, placing each document into the array at its rank position.
         for doc in searchedDocuments {
-            if let rawID = doc.id, let rank = rankByID[Int(rawID)] , rank < orderedByRank.count {
+            if let rawID = doc.id, let rank = documentRanksByID[Int(rawID)] , rank < orderedByRank.count {
                 orderedByRank[rank] = doc
             }
         }
         
-        // Compact the rank order list, to remove an documents that were not found.
-        let compactOrdered = orderedByRank.compactMap { $0 }
+        let orderedDocuments = orderedByRank.compactMap({$0})
+    
+        let searchResults: [SearchResult] = try await dbPool.read { db in
+            var results: [SearchResult] = []
+            results.reserveCapacity(orderedDocuments.count)
+
+            for document in orderedDocuments {
+                let pieces = try document
+                    .request(for: IrisDocument.pieces)
+                    .filter(surfacedPieceIDs.contains(Column("id")))
+                    .fetchAll(db)
+                
+                // Order the document's pieces by relevance using an O(n) loop.
+                var orderedByRank = Array<DocumentPiece?>(repeating: nil, count: pieceRanksByID.count)
+
+                for piece in pieces {
+                    if let rawID = piece.id, let rank = pieceRanksByID[Int(rawID)] , rank < orderedByRank.count {
+                        orderedByRank[rank] = piece
+                    }
+                }
+
+                let orderedPieces = orderedByRank.compactMap({$0})
+                results.append(SearchResult(document: document, importantPieces: orderedPieces))
+            }
+
+            return results
+        }
         
-        // Limit the kItems the user requested to the number of documents we found.
-        let limit = nItems.clamped(to: 0...compactOrdered.count)
-        return Array(compactOrdered.prefix(upTo: limit))
+        return searchResults
     }
 }
-

@@ -28,3 +28,14 @@ public enum EmbeddableContent: Codable, Sendable {
         }
     }
 }
+
+public extension EmbeddableContent {
+    var textContent: String? {
+        switch self {
+        case .text(let content):
+            return content
+        case .image(_, let caption):
+            return caption
+        }
+    }
+}
