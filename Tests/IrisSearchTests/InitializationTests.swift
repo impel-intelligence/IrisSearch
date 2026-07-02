@@ -103,4 +103,26 @@ class IrisDB_InitializationTests {
         #expect(readDocument?.pieces.first?.text == content, "The loaded piece should round-trip the original content.")
     }
     
+    @Test func readDocumentByTitle() async throws {
+        let directories = TestingDirectories()
+        
+        let embedder = try NLEmbedder(language: .english)
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        
+        let uuid = UUID()
+        let content = "Test content"
+        let title = "Test title"
+        let description = "Test description"
+        try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content)])
+        
+        let readDocument = try await database.readDocument(title: title)
+        #expect(readDocument != nil)
+        #expect(readDocument?.uuid == uuid)
+        #expect(readDocument?.title == title, "Reading a document should round-trip its title.")
+        #expect(readDocument?.description == description, "Reading a document should round-trip its description.")
+        #expect(readDocument?.pieces.count == 1, "Reading a document should load its persisted pieces.")
+        #expect(readDocument?.pieces.first?.text == content, "The loaded piece should round-trip the original content.")
+    }
+
+    
 }

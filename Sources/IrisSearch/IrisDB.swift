@@ -67,7 +67,7 @@ public actor IrisDB {
             try db.create(table: IrisDocument.databaseTableName) { table in
                 table.autoIncrementedPrimaryKey("id")
                 table.column("uuid", .blob).unique().notNull()
-                table.column("title", .text).notNull()
+                table.column("title", .text).unique().notNull()
                 table.column("description", .text).notNull()
             }
             
@@ -100,7 +100,7 @@ public actor IrisDB {
                 table.column("textContent")
             }
         }
-        
+                
         try migrator.migrate(dbPool)
     }
 }
@@ -108,6 +108,14 @@ public actor IrisDB {
 // MARK: CRUD
 // Read operations
 extension IrisDB {
+    public func readDocument(title: String) async throws -> IrisDocument? {
+        return try await dbPool.read { db in
+            guard var document = try IrisDocument.fetchOne(db, key: ["title": title]) else { return nil }
+            document.pieces = try document.request(for: IrisDocument.pieces).fetchAll(db)
+            return document
+        }
+    }
+
     public func readDocument(uuid: UUID) async throws -> IrisDocument? {
         return try await dbPool.read { db in
             guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
@@ -345,7 +353,7 @@ extension IrisDB {
         let maximumPieces = try await dbPool.read { db in
             return try DocumentPiece.fetchCount(db)
         }
-
+        
         guard maximumPieces > 0 else { throw IrisDBError.noDocuments }
         
         // Search for twice as many items as the user requested to give better ranking down the line.
@@ -355,7 +363,7 @@ extension IrisDB {
         
         // Text index searching
         let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
-
+        
         let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit)
         
         // Document Piece Database Search
@@ -371,7 +379,7 @@ extension IrisDB {
                 .order(Column.rank)
                 .limit(searchLimit)
                 .fetchAll(db)
-
+            
             return documents
         })
         
@@ -438,7 +446,7 @@ extension IrisDB {
             let currentRank: Double = syntacticDocumentsWithBestScore[parentID, default: -.greatestFiniteMagnitude]
             syntacticDocumentsWithBestScore[parentID] = max(currentRank, -piece.rank)
         }
-
+        
         // Search documents by their title and description.
         let syntacticTextDocuments: [SearchableDocument] = (try await dbPool.read { db in
             guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
@@ -490,16 +498,16 @@ extension IrisDB {
         
         // Save the ranking (list index) for every piece ID. Will be used for reconstructing the ranking after database fetches.
         let pieceRanksByID: [Int: Int] = Dictionary(uniqueKeysWithValues: rankedPieceIDs.enumerated().map { ($1, $0) })
-
+        
         // Save the ranking (list index) for every document ID. Will be used for reconstructing the ranking after database fetches.
         let documentRanksByID: [Int: Int] = Dictionary(uniqueKeysWithValues: rankedDocumentIDs.enumerated().map { ($1, $0) })
-
+        
         // Any pieces that were actually surfaced by the piece searching
         let surfacedPieceIDs = Set(semanticTextPieces.map(\.id) + syntacticTextDocumentPieces.map { Int($0.id) })
-
+        
         // Take the top n ranked documents.
         let limitedDocumentIDs = Array(rankedDocumentIDs.prefix(nItems))
-
+        
         // Find all of the documents that match the limited documents we just made, and load their pieces.
         let searchedDocuments = try await dbPool.read { db in
             return try IrisDocument.filter(limitedDocumentIDs.contains(Column("id"))).fetchAll(db)
@@ -515,11 +523,11 @@ extension IrisDB {
         }
         
         let orderedDocuments = orderedByRank.compactMap({$0})
-    
+        
         let searchResults: [SearchResult] = try await dbPool.read { db in
             var results: [SearchResult] = []
             results.reserveCapacity(orderedDocuments.count)
-
+            
             for document in orderedDocuments {
                 let pieces = try document
                     .request(for: IrisDocument.pieces)
@@ -528,17 +536,17 @@ extension IrisDB {
                 
                 // Order the document's pieces by relevance using an O(n) loop.
                 var orderedByRank = Array<DocumentPiece?>(repeating: nil, count: pieceRanksByID.count)
-
+                
                 for piece in pieces {
                     if let rawID = piece.id, let rank = pieceRanksByID[Int(rawID)] , rank < orderedByRank.count {
                         orderedByRank[rank] = piece
                     }
                 }
-
+                
                 let orderedPieces = orderedByRank.compactMap({$0})
                 results.append(SearchResult(document: document, importantPieces: orderedPieces))
             }
-
+            
             return results
         }
         
