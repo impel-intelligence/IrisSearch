@@ -53,8 +53,8 @@ public final class NLContextualEmbedder: EmbeddingProvider, Sendable {
                 return true
             }
             
-            // Protect against divide-by-zero erros
-            guard tokenCount > 0 else { return [] }
+            // Protect against divide-by-zero errors
+            guard tokenCount > 0 else { return Array(repeating: 0.0, count: embedding.dimension) }
             
             // Divide all of the dimensions by the
             for i in 0..<embedding.dimension {

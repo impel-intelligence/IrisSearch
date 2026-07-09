@@ -210,7 +210,7 @@ extension IrisDB {
     private func performCreateDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
         // Create a document object
         let document = try await self.createDocumentObject(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)
-        
+
         // Insert the document into the database, capturing the inserted record (with its assigned rowID).
         let insertedDocument = try await self.dbPool.write { db in
             var document = document
@@ -225,7 +225,18 @@ extension IrisDB {
             return document
         }
         
-        try self.textIndex.addDocument(document: insertedDocument)
+        // Insert the document into faiss.
+        do {
+            try self.textIndex.addDocument(document: insertedDocument)
+        } catch {
+            // If adding to the index fails, delete the inserted document.
+            _ = try await self.dbPool.write { db in
+                try insertedDocument.delete(db)
+            }
+            
+            // Then re-throw the error.
+            throw error
+        }
         
         return insertedDocument
 
