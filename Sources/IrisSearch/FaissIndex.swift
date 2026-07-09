@@ -118,7 +118,8 @@ extension FaissIndex {
         var ids: [Int] = []
         
         // For each embedding in the document, add it with the pieces's rowID as its ID
-        for piece in document.pieces {
+        // TODO: Remove empty embeddings dodge. It is here because images are not currently embedded.
+        for piece in document.pieces where !piece.embeddings.isEmpty {
             guard let pieceID = piece.id else { continue }
             
             var embedding = piece.embeddings
@@ -157,7 +158,8 @@ extension FaissIndex {
         // Use a flat index for single document indices as we do not need anything faster.
         let index = try getDocumentIndex(uuid: document.uuid)
         
-        var embeddings = document.pieces.map(\.embeddings)
+        // TODO: Remove empty embeddings dodge. It is here because images are not currently embedded.
+        var embeddings = document.pieces.map(\.embeddings).filter({ !$0.isEmpty })
         
         // Make sure that all of the embeddings are the right size. Otherwise index.add will crash.
         for embedding in embeddings where embedding.count != embeddingProvider.dimension {
