@@ -26,6 +26,9 @@ final class FaissIndex {
         }
     }
     
+    enum FaissError: Error {
+        case invalidVectorDimension(size: Int, expected: Int)
+    }
 
     private var embeddingProvider: EmbeddingProvider
     
@@ -119,11 +122,16 @@ extension FaissIndex {
             guard let pieceID = piece.id else { continue }
             
             var embedding = piece.embeddings
+            
+            // Make sure that the dimensions for this vector are correct.
+            guard embedding.count == self.embeddingProvider.dimension else {
+                throw FaissError.invalidVectorDimension(size: embedding.count, expected: embeddingProvider.dimension)
+            }
+            
             faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embedding)
             embeddings.append(embedding)
             ids.append(Int(pieceID))
         }
-
         
         let index: IDMap = try getGlobalIndex()
         
@@ -151,6 +159,11 @@ extension FaissIndex {
         
         var embeddings = document.pieces.map(\.embeddings)
         
+        // Make sure that all of the embeddings are the right size. Otherwise index.add will crash.
+        for embedding in embeddings where embedding.count != embeddingProvider.dimension {
+            throw FaissError.invalidVectorDimension(size: embedding.count, expected: embeddingProvider.dimension)
+        }
+
         for index in 0..<embeddings.count {
             faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embeddings[index])
         }
