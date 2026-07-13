@@ -81,6 +81,7 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         static let dataContent = Column("dataContent")
         static let embeddings = Column("embeddings")
         static let parentID = Column("parentID")
+        static let location = Column("location")
     }
     
     enum PieceLoadingError: Error {
@@ -121,14 +122,15 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         
         let textContent: String? = row[Columns.textContent]
         let dataContent: Data? = row[Columns.dataContent]
+        let location: DocumentLocation = row[Columns.location]
         
         switch EmbeddableContent.ContentType(rawValue: contentType) {
         case .text:
             guard let textContent else { throw PieceLoadingError.noText }
-            self.content = .text(content: textContent)
+            self.content = .text(content: textContent,location: location)
         case .image:
             guard let dataContent else { throw PieceLoadingError.noData }
-            self.content = .image(content: dataContent, caption: textContent)
+            self.content = .image(content: dataContent, caption: textContent, location: location)
         case .none:
             throw PieceLoadingError.noValidContent
         }
@@ -147,12 +149,14 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         container[Columns.contentType] = content.contentType.rawValue
         
         switch content {
-        case .text(let content):
+        case .text(let content, let location):
             container[Columns.textContent] = content
             container[Columns.dataContent] = nil
-        case .image(let content, let caption):
+            container[Columns.location] = location
+        case .image(let content, let caption, let location):
             container[Columns.dataContent] = content
             container[Columns.textContent] = caption ?? nil
+            container[Columns.location] = location
         }
         
         let embeddingData: Data = embeddings.withUnsafeBytes({ Data($0) })
@@ -167,7 +171,11 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
 
 extension DocumentPiece {
     public var text: String? {
-        if case .text(let content) = content { return content }
+        if case .text(let content, _) = content { return content }
         return nil
     }
+}
+
+extension DocumentLocation: DatabaseValueConvertible {
+    
 }

@@ -21,8 +21,8 @@ final class TXTDigester: FileDigester {
         var usedEncoding: String.Encoding = .utf8
         let stringContent = try String(contentsOf: file, usedEncoding: &usedEncoding)
         
-        return [
-            .text(content: stringContent, location: DocumentLocation(range: 0...(stringContent.count - 1), locationStyle: "characters"))
-        ]
+        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<stringContent.count))
+        
+        return [ .text(content: stringContent, location: location) ]
     }
 }

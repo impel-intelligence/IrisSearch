@@ -100,7 +100,13 @@ public actor IrisDB {
                 table.column("textContent")
             }
         }
-                
+        
+        migrator.registerMigration("Add Document Locations") { db in
+            try db.alter(table: DocumentPiece.databaseTableName) { table in
+                table.add(column: "location", .blob)
+            }
+        }
+        
         try migrator.migrate(dbPool)
     }
 }
@@ -140,23 +146,36 @@ extension IrisDB {
 
 // Create, update and delete actions
 extension IrisDB {
-    private func chunkEmbeddableContent(_ content: EmbeddableContent) -> [EmbeddableContent] {
-        switch content {
-        case .text(let content):
-            let textChunks = textChunker.chunk(content: content)
-            return textChunks.compactMap({ EmbeddableContent.text(content: $0) })
-        case .image(_, _):
+    private func chunkEmbeddableContent(_ original: EmbeddableContent) -> [EmbeddableContent] {
+        switch original {
+        case .text(let content, let location):
+            let textChunks = textChunker.chunk(content: content, size: textEmbedder.dimension)
+            
+            var newContent: [EmbeddableContent] = []
+            
+            for (offset, chunk) in textChunks.enumerated() {
+                let location = DocumentLocation(
+                    sequenceIndex: location.sequenceIndex,
+                    anchor: location.anchor,
+                    chunk: DocumentChunk(index: offset, totalChunks: textChunks.count - 1)
+                )
+                
+                newContent.append(EmbeddableContent.text(content: chunk, location: location))
+            }
+                        
+            return newContent
+        case .image(_, _, _):
             break
         }
         
-        return [content]
+        return [original]
     }
     
     private func embedChunk(_ chunk: EmbeddableContent) async throws -> [Float] {
         switch chunk {
-        case .text(let content):
+        case .text(let content, _):
             return try await textEmbedder.embed(content: content).map({Float($0)})
-        case .image(_, _):
+        case .image(_, _, _):
             return []
         }
     }

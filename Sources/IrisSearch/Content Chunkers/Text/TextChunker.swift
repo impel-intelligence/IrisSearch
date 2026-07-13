@@ -10,5 +10,5 @@ import IrisCommon
 public protocol TextChunker: Sendable {
     init()
     
-    func chunk(content: String) -> [String]
+    func chunk(content: String, size: Int) -> [String]
 }

@@ -40,7 +40,8 @@ class IrisDB_InitializationTests {
         let content = "Test content"
         let title = "Test title"
         let description = "Test description"
-        let document = try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content)])
+        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let document = try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
 
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
         let documents = try await dbQueue.read { db in
@@ -69,7 +70,12 @@ class IrisDB_InitializationTests {
         let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
         
         let uuid = UUID()
-        try await database.createDocument(uuid: uuid, title: "Test title", description: "Test description", embeddableContent: [.text(content: "Test Content")])
+        let content = "Test content"
+        let title = "Test title"
+        let description = "Test description"
+        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+
+        try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
         
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
         let pieces = try await dbQueue.read { db in
@@ -92,7 +98,8 @@ class IrisDB_InitializationTests {
         let content = "Test content"
         let title = "Test title"
         let description = "Test description"
-        try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content)])
+        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
 
         let readDocument = try await database.readDocument(uuid: uuid)
         #expect(readDocument != nil)
@@ -113,7 +120,8 @@ class IrisDB_InitializationTests {
         let content = "Test content"
         let title = "Test title"
         let description = "Test description"
-        try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content)])
+        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
         
         let readDocument = try await database.readDocument(title: title)
         #expect(readDocument != nil)
