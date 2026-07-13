@@ -98,6 +98,10 @@ struct SentenceChunkerTests {
 
         for (offset, piece) in chunks.enumerated() {
             #expect(piece.location.sequenceIndex == 100 + offset)
+            // documentLength is local to this call (this call's own chunk count), not shifted by sequenceOffset.
+            // Reconciling a grand total across multiple calls (e.g. PDFDigester's per-page loop) is the caller's
+            // responsibility, not SentenceChunker's.
+            #expect(piece.location.documentLength == chunks.count)
         }
     }
 
