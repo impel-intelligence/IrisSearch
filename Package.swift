@@ -52,7 +52,7 @@ let package = Package(
                 "TestUtilities"
             ],
             resources: [
-                .copy("Test Documents")
+                .copy("../Test Documents")
             ]
         ),
         
@@ -68,7 +68,7 @@ let package = Package(
                 "TestUtilities"
             ],
             resources: [
-                .copy("Test Documents")
+                .copy("../Test Documents")
             ]
         ),
         
@@ -81,7 +81,7 @@ let package = Package(
                 "TestUtilities"
             ],
             resources: [
-                .copy("Test Documents")
+                .copy("../Test Documents")
             ]
        )
     ]
