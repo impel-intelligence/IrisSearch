@@ -103,56 +103,6 @@ class IrisDB_DocumentLocationTests {
         }
     }
 
-    // MARK: - Chunk Info
-
-    // Edited by Claude Sonnet 5 (Anthropic) on 2026-07-13.
-    // IrisDB no longer chunks content itself, so it no longer synthesizes chunk metadata either -- it just
-    // persists whatever `DocumentLocation.chunk` the caller (a Digester) already set, verbatim.
-    @Test func chunkInfoRemainsNilWhenNotProvidedByCaller() async throws {
-        let directories = TestingDirectories()
-        let database = try makeDatabase(directories: directories)
-
-        let content = "Short"
-        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
-
-        try await database.createDocument(
-            uuid: UUID(), title: "Chunk Doc", description: "desc",
-            embeddableContent: [.text(content: content, location: location)]
-        )
-
-        let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
-        let pieces = try await dbQueue.read { db in try DocumentPiece.fetchAll(db) }
-
-        #expect(pieces.count == 1)
-        #expect(pieces[0].content.location.chunk == nil, "Chunk info should stay nil when the caller does not provide it.")
-    }
-
-    @Test func chunkInfoRoundTripsWhenProvidedByCaller() async throws {
-        let directories = TestingDirectories()
-        let database = try makeDatabase(directories: directories)
-
-        let content = "Short"
-        let location = DocumentLocation(
-            sequenceIndex: 0,
-            documentLength: 1,
-            anchor: .text(characterRange: 0..<content.count),
-            chunk: DocumentChunk(index: 1, totalChunks: 3)
-        )
-
-        try await database.createDocument(
-            uuid: UUID(), title: "Chunk Doc", description: "desc",
-            embeddableContent: [.text(content: content, location: location)]
-        )
-
-        let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
-        let pieces = try await dbQueue.read { db in try DocumentPiece.fetchAll(db) }
-
-        #expect(pieces.count == 1)
-        let savedChunk = pieces[0].content.location.chunk
-        #expect(savedChunk?.index == 1, "Chunk index provided by the caller should round-trip through SQLite.")
-        #expect(savedChunk?.totalChunks == 3, "Chunk totalChunks provided by the caller should round-trip through SQLite.")
-    }
-
     // MARK: - Multiple Locations
 
     @Test func multipleLocationsStoredIndependently() async throws {

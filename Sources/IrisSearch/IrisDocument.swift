@@ -81,7 +81,10 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         static let dataContent = Column("dataContent")
         static let embeddings = Column("embeddings")
         static let parentID = Column("parentID")
-        static let location = Column("location")
+        
+        static let sequenceIndex = Column("sequenceIndex")
+        static let documentLength = Column("documentLength")
+        static let anchor = Column("documentAnchor")
     }
     
     enum PieceLoadingError: Error {
@@ -122,7 +125,12 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         
         let textContent: String? = row[Columns.textContent]
         let dataContent: Data? = row[Columns.dataContent]
-        var location: DocumentLocation = row[Columns.location] ?? DocumentLocation(sequenceIndex: 0, documentLength: 0, anchor: .text(characterRange: 0..<(textContent?.count ?? 0)))
+        
+        let sequenceIndex: Int = row[Columns.sequenceIndex] ?? 0
+        let documentLength: Int = row[Columns.documentLength] ?? 1
+        let anchor: DocumentAnchor = row[Columns.anchor] ?? DocumentAnchor.text(characterRange: 0..<(textContent?.count ?? 0))
+        
+        let location = DocumentLocation(sequenceIndex: sequenceIndex, documentLength: documentLength, anchor: anchor)
         
         switch EmbeddableContent.ContentType(rawValue: contentType) {
         case .text:
@@ -152,11 +160,19 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         case .text(let content, let location):
             container[Columns.textContent] = content
             container[Columns.dataContent] = nil
-            container[Columns.location] = location
+            
+            // Location
+            container[Columns.sequenceIndex] = location.sequenceIndex
+            container[Columns.documentLength] = location.documentLength
+            container[Columns.anchor] = location.anchor
         case .image(let content, let caption, let location):
             container[Columns.dataContent] = content
             container[Columns.textContent] = caption ?? nil
-            container[Columns.location] = location
+            
+            // Location
+            container[Columns.sequenceIndex] = location.sequenceIndex
+            container[Columns.documentLength] = location.documentLength
+            container[Columns.anchor] = location.anchor
         }
         
         let embeddingData: Data = embeddings.withUnsafeBytes({ Data($0) })
@@ -176,6 +192,6 @@ extension DocumentPiece {
     }
 }
 
-extension DocumentLocation: DatabaseValueConvertible {
-    
-}
+extension DocumentLocation: DatabaseValueConvertible { }
+
+extension DocumentAnchor: DatabaseValueConvertible { }

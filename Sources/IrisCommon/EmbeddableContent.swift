@@ -16,11 +16,11 @@ public enum DocumentAnchor: Codable, Sendable, CustomStringConvertible {
         case .text(let characterRange):
             return "Characters: \(characterRange.lowerBound) up to \(characterRange.upperBound)"
         case .pdf(let page, let characterRange):
-            if let characterRange {
-                return "Page \(page), Characters: \(characterRange.lowerBound) up to \(characterRange.upperBound)"
-            } else {
+//            if let characterRange {
+//                return "Page \(page), Characters: \(characterRange.lowerBound) up to \(characterRange.upperBound)"
+//            } else {
                 return "Page \(page)"
-            }
+//            }
         }
     }
 }
@@ -44,21 +44,17 @@ public struct DocumentLocation: Codable, Sendable {
 
     /// Where in the document this location is
     public var anchor: DocumentAnchor
-    
-    /// If this location was created during chunking, track that here.
-    public var chunk: DocumentChunk?
-    
-    public init(sequenceIndex: Int, documentLength: Int, anchor: DocumentAnchor, chunk: DocumentChunk? = nil) {
+        
+    public init(sequenceIndex: Int, documentLength: Int, anchor: DocumentAnchor) {
         self.sequenceIndex = sequenceIndex
         self.documentLength = documentLength
         self.anchor = anchor
-        self.chunk = chunk
     }
 }
 
 extension DocumentLocation {
     public func moveSequence(to newIndex: Int) -> DocumentLocation {
-        return DocumentLocation(sequenceIndex: newIndex, documentLength: self.documentLength, anchor: self.anchor, chunk: self.chunk)
+        return DocumentLocation(sequenceIndex: newIndex, documentLength: self.documentLength, anchor: self.anchor)
     }
 }
 
@@ -84,25 +80,17 @@ public enum EmbeddableContent: Codable, Sendable {
     }
 }
 
-extension EmbeddableContent {
-    public func moveLocationSequence(to newIndex: Int) -> EmbeddableContent {
+extension EmbeddableContent {    
+    public func withNewDocumentLength(length: Int) -> EmbeddableContent {
         switch self {
-        case .text(let content, let location):
-            return .text(content: content, location: location.moveSequence(to: newIndex))
-        case .image(let content, let caption, let location):
-            return .image(content: content, caption: caption, location: location.moveSequence(to: newIndex))
+        case .text(let content, var location):
+            location.documentLength = length
+            return .text(content: content, location: location)
+        case .image(let content, let caption, var location):
+            location.documentLength = length
+            return .image(content: content, caption: caption, location: location)
         }
     }
-    
-    public func setAnchor(to anchor: DocumentAnchor) -> EmbeddableContent {
-        switch self {
-        case .text(let content, let location):
-            return .text(content: content, location: DocumentLocation(sequenceIndex: location.sequenceIndex, documentLength: location.documentLength, anchor: anchor))
-        case .image(let content, let caption, let location):
-            return .image(content: content, caption: caption, location: DocumentLocation(sequenceIndex: location.sequenceIndex, documentLength: location.documentLength, anchor: anchor))
-        }
-    }
-
 }
 
 public extension EmbeddableContent {
