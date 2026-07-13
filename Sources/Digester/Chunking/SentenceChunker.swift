@@ -49,7 +49,6 @@ struct SentenceChunker {
             if (inProgressContentLength + sentence.content.count) > contextSize {
                 // Create good chunk
                 goodChunks.append(inProgress)
-                inProgress = []
                 
                 // Append overlap
                 var overlapSentences: [Sentence] = []
@@ -58,7 +57,7 @@ struct SentenceChunker {
                 // Loop from the back and add sentences while we are still under the overlap
                 for overlapSentence in inProgress.reversed() {
                     guard overlapLength + overlapSentence.content.count <= overlapCharacters else { break }
-                    overlapSentences.append(overlapSentence)
+                    overlapSentences.insert(overlapSentence, at: 0)
                     overlapLength += overlapSentence.content.count
                 }
                 
@@ -72,13 +71,15 @@ struct SentenceChunker {
             inProgressContentLength += sentence.content.count
         }
         
+        goodChunks.append(inProgress)
+        
         // Convert sentence chunks into embeddable content and return it
         return goodChunks.enumerated().compactMap { offset, chunk in
             guard let first = chunk.first, let last = chunk.last else { return nil }
             let chunkContent = chunk.map(\.content).joined()
             let chunkRange = first.range.lowerBound..<last.range.upperBound
             let anchor = anchorMaker(chunkRange)
-            let location = DocumentLocation(sequenceIndex: sequenceOffset + offset, documentLength: goodChunks.count, anchor: anchor)
+            let location = DocumentLocation(sequenceIndex: sequenceOffset + offset, documentLength: sequenceOffset + goodChunks.count, anchor: anchor)
             return EmbeddableContent.text(content: chunkContent, location: location)
         }
     }

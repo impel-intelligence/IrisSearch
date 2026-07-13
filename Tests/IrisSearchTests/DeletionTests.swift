@@ -20,7 +20,7 @@ class IrisDB_DeletionTests {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
         
         let uuid = UUID()
         let content = "Test content"

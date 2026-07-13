@@ -122,7 +122,7 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         
         let textContent: String? = row[Columns.textContent]
         let dataContent: Data? = row[Columns.dataContent]
-        let location: DocumentLocation = row[Columns.location]
+        var location: DocumentLocation = row[Columns.location] ?? DocumentLocation(sequenceIndex: 0, documentLength: 0, anchor: .text(characterRange: 0..<(textContent?.count ?? 0)))
         
         switch EmbeddableContent.ContentType(rawValue: contentType) {
         case .text:

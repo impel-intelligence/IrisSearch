@@ -39,6 +39,19 @@ public struct PerformanceBundle {
     public let values: [Double]
 }
 
+// Edited by Claude Sonnet 5 (Anthropic) on 2026-07-13.
+/// Builds an array of `.text` embeddable content pieces from `texts`, standing in for what a `Digester`'s
+/// chunker would produce. `IrisDB` no longer chunks content itself, so tests that need multiple document
+/// pieces must supply them pre-chunked, exactly as a real digester now would.
+public func chunkedEmbeddableContent(_ texts: [String]) -> [EmbeddableContent] {
+    texts.enumerated().map { offset, text in
+        EmbeddableContent.text(
+            content: text,
+            location: DocumentLocation(sequenceIndex: offset, documentLength: texts.count, anchor: .text(characterRange: 0..<text.count))
+        )
+    }
+}
+
 @discardableResult
 public func measurePerformance(nRuns: Int = 100, _ block: @escaping () async throws -> Void) async rethrows -> PerformanceBundle {
     let throwAwayRuns = nRuns / 10
