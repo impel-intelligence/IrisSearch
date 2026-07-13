@@ -79,7 +79,7 @@ struct SentenceChunker {
             let chunkContent = chunk.map(\.content).joined()
             let chunkRange = first.range.lowerBound..<last.range.upperBound
             let anchor = anchorMaker(chunkRange)
-            let location = DocumentLocation(sequenceIndex: sequenceOffset + offset, documentLength: sequenceOffset + goodChunks.count, anchor: anchor)
+            let location = DocumentLocation(sequenceIndex: sequenceOffset + offset, documentLength: goodChunks.count, anchor: anchor)
             return EmbeddableContent.text(content: chunkContent, location: location)
         }
     }

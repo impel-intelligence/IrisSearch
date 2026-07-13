@@ -145,6 +145,9 @@ final class PDFDigester: FileDigester, Sendable {
                 // Update content pieces with the chunked pieces.
                 contentPieces.append(contentsOf: chunkedPieces)
             }
+            
+            // Update the total document length for all of the text pieces we just created.
+            contentPieces = contentPieces.map { $0.withNewDocumentLength(length: contentPieces.count) }
         }
 
         for (offset, page) in resolvedRenderedPages.enumerated() {
