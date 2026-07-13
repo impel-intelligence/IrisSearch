@@ -19,7 +19,7 @@ class IrisDB_FaissIndexTests {
         let directories = TestingDirectories()
 
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
         let uuid = UUID()
         let content = "Test content"
@@ -37,7 +37,7 @@ class IrisDB_FaissIndexTests {
         let directories = TestingDirectories()
 
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
         let uuid = UUID()
         let content = "Test content"
@@ -60,56 +60,59 @@ class IrisDB_FaissIndexTests {
         #expect(globalIndex.idMap().count == 1, "The global index should hold one vector for the single-chunk document.")
     }
 
+    // Edited by Claude Sonnet 5 (Anthropic) on 2026-07-13.
+    // IrisDB no longer chunks content itself, so this test supplies multiple pre-chunked pieces directly,
+    // the way a Digester now would, instead of relying on IrisDB to split one long string into many.
     @Test func updatingDocumentRefreshesLocalIndex() async throws {
         let directories = TestingDirectories()
 
         let embedder = try NLEmbedder(language: .english)
-        let chunker = BasicTextChunker()
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
         let uuid = UUID()
         let originalContent = "Original Content"
         try await database.createDocument(uuid: uuid, title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<originalContent.count)))])
 
-        let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
-        let expectedChunks = chunker.chunk(content: newContent, size: embedder.dimension)
-        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<newContent.count)))])
+        let newChunks = ["Lorem ipsum dolor sit amet.", "Consectetur adipiscing elit.", "Sed do eiusmod tempor incididunt."]
+        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: chunkedEmbeddableContent(newChunks))
 
         let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
         #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index should still exist after an update.")
 
         let localIndex = try FlatIndex.from(localIndexPath.path())
-        #expect(localIndex.count == expectedChunks.count, "The local index should hold one vector per chunk of the new content.")
+        #expect(localIndex.count == newChunks.count, "The local index should hold one vector per supplied chunk of the new content.")
     }
 
+    // Edited by Claude Sonnet 5 (Anthropic) on 2026-07-13.
+    // IrisDB no longer chunks content itself, so this test supplies multiple pre-chunked pieces directly.
     @Test func updatingDocumentRebuildsGlobalIndexEntry() async throws {
         let directories = TestingDirectories()
 
         let embedder = try NLEmbedder(language: .english)
-        let chunker = BasicTextChunker()
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
         let uuid = UUID()
         let originalContent = "Original Content"
         try await database.createDocument(uuid: uuid, title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<originalContent.count)))])
 
-        let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
-        let expectedChunks = chunker.chunk(content: newContent, size: embedder.dimension)
-        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<newContent.count)))])
+        let newChunks = ["Lorem ipsum dolor sit amet.", "Consectetur adipiscing elit.", "Sed do eiusmod tempor incididunt."]
+        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: chunkedEmbeddableContent(newChunks))
 
         let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
         let globalIndex = try IDMap.from(globalIndexPath.path())
         let ids = globalIndex.idMap()
 
-        #expect(ids.count == expectedChunks.count, "The global index should contain exactly one entry per chunk of the updated content, with no stale entries.")
+        #expect(ids.count == newChunks.count, "The global index should contain exactly one entry per supplied chunk of the updated content, with no stale entries.")
     }
 
+    // Edited by Claude Sonnet 5 (Anthropic) on 2026-07-13.
+    // Each document below is created with exactly one embeddableContent item, and IrisDB no longer chunks
+    // content itself, so each is expected to produce exactly one piece.
     @Test func addingDocumentsAccumulatesInGlobalIndex() async throws {
         let directories = TestingDirectories()
 
         let embedder = try NLEmbedder(language: .english)
-        let chunker = BasicTextChunker()
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
         let firstUUID = UUID()
         let secondUUID = UUID()
@@ -118,8 +121,8 @@ class IrisDB_FaissIndexTests {
         let first = try await database.createDocument(uuid: firstUUID, title: "First", description: firstContent, embeddableContent: [.text(content: firstContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<firstContent.count)))])
         let second = try await database.createDocument(uuid: secondUUID, title: "Second", description: secondContent, embeddableContent: [.text(content: secondContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<secondContent.count)))])
 
-        let expectedFirst = chunker.chunk(content: "First document", size: embedder.dimension).count
-        let expectedSecond = chunker.chunk(content: "Second document", size: embedder.dimension).count
+        let expectedFirst = 1
+        let expectedSecond = 1
 
         let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
         let globalIndex = try IDMap.from(globalIndexPath.path())
@@ -133,12 +136,14 @@ class IrisDB_FaissIndexTests {
         #expect(ids.filter { $0 == Int(secondID) }.count == expectedSecond, "The second document's entries should be present in the global index.")
     }
 
+    // Edited by Claude Sonnet 5 (Anthropic) on 2026-07-13.
+    // "Keep" is created with exactly one embeddableContent item, and IrisDB no longer chunks content itself,
+    // so it is expected to produce exactly one piece.
     @Test func deletingDocumentRemovesItsEntriesFromGlobalIndex() async throws {
         let directories = TestingDirectories()
 
         let embedder = try NLEmbedder(language: .english)
-        let chunker = BasicTextChunker()
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
         let keepUUID = UUID()
         let removeUUID = UUID()
@@ -149,7 +154,7 @@ class IrisDB_FaissIndexTests {
 
         try await database.deleteDocument(uuid: removeUUID)
 
-        let expectedKeep = chunker.chunk(content: "Document to keep", size: embedder.dimension).count
+        let expectedKeep = 1
 
         let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
         let globalIndex = try IDMap.from(globalIndexPath.path())

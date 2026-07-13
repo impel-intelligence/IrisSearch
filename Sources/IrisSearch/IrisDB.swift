@@ -114,6 +114,19 @@ public actor IrisDB {
 // MARK: CRUD
 // Read operations
 extension IrisDB {
+    public func readPieceContext(documentTitle: String, pieceSequenceIndex: Int, before: Int, after: Int) async throws -> [DocumentPiece] {
+        return try await dbPool.read { db in
+            // The range of pieces that we want to grab
+            let sequenceRange = (pieceSequenceIndex - before)..<(pieceSequenceIndex + after)
+            guard var document = try IrisDocument.fetchOne(db, key: ["title": documentTitle]) else { return [] }
+            
+            // Grab all of the document pieces THEN filter. We can't use SQL to filter here since the locations are just a blob inside of SQL. This kinda sucks but is okay for now.
+            document.pieces = try document.request(for: IrisDocument.pieces)
+                .fetchAll(db)
+                .filter { piece in sequenceRange.contains(piece.content.location.sequenceIndex)}
+            return document.pieces
+        }
+    }
     
     public func readDocument(title: String, pieceSequenceRange: Range<Int>) async throws -> IrisDocument? {
         return try await dbPool.read { db in

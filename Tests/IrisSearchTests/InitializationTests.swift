@@ -22,10 +22,10 @@ class IrisDB_InitializationTests {
         let embedder = try NLEmbedder(language: .english)
         
         // Initialize the database and tables.
-        _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder, textChunker: BasicTextChunker())
+        _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder)
         
         // a second database, this should succeed even though we have already initialized another database instance.
-        _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder, textChunker: BasicTextChunker())
+        _ = try IrisDB(databaseLocation: directories.baseURL, databaseName: "main", textEmbedder: embedder)
     }
     
     // MARK: Creating Documents
@@ -34,7 +34,7 @@ class IrisDB_InitializationTests {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
         
         let uuid = UUID()
         let content = "Test content"
@@ -67,7 +67,7 @@ class IrisDB_InitializationTests {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
         
         let uuid = UUID()
         let content = "Test content"
@@ -92,7 +92,7 @@ class IrisDB_InitializationTests {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
         
         let uuid = UUID()
         let content = "Test content"
@@ -114,7 +114,7 @@ class IrisDB_InitializationTests {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
         
         let uuid = UUID()
         let content = "Test content"

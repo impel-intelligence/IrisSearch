@@ -25,7 +25,7 @@ struct PDFArgument {
         numberOfPages: 10, numberOfPagesWithText: 9)
 ]) func testPDFDigester(pdfFile: PDFArgument) async throws {
     let digestor = PDFDigester()
-    let digest = try await digestor.digest(file: pdfFile.url)
+    let digest = try await digestor.digest(file: pdfFile.url, contextSize: 100000)
         
     let nImage = digest.count { content in
         switch content {
@@ -56,7 +56,7 @@ struct PDFArgument {
     let digestor = PDFDigester()
     
     let performance = try await measurePerformance(nRuns: 10) {
-        _ = try await digestor.digest(file: pdfURL)
+        _ = try await digestor.digest(file: pdfURL, contextSize: 100000)
     }
     
     #expect(performance.average < 1)

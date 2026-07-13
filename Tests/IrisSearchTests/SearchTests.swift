@@ -20,7 +20,7 @@ class IrisDB_SearchTests {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
 
         let originalContent = "Original content"
         let differentContent = "Different"
@@ -42,7 +42,7 @@ class IrisDB_SearchTests {
         let directories = TestingDirectories()
         
         let embedder = try NLEmbedder(language: .english)
-        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder, textChunker: BasicTextChunker())
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
         
         let sonnetURL = Bundle.module.url(forResource: "Sonnets", withExtension: nil, subdirectory: "Test Documents")!
         let sonnetPaths = try FileManager.default.contentsOfDirectory(atPath: sonnetURL.path(percentEncoded: false))
