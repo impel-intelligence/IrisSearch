@@ -8,8 +8,8 @@
 public struct BasicTextChunker: TextChunker, Sendable {
     public init() { }
     
-    public func chunk(content: String) -> [String] {
-        return chunkText(input: content, splits: ["\n", "."], targetCharacters: 512, overlap: 0)
+    public func chunk(content: String, size: Int) -> [String] {
+        return chunkText(input: content, splits: ["\n", "."], targetCharacters: size, overlap: 0)
     }
     
     private func chunkText(input: String, splits: [Character], targetCharacters: Int, overlap: Int) -> [String] {

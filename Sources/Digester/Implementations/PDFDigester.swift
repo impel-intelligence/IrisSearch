@@ -122,20 +122,21 @@ final class PDFDigester: FileDigester, Sendable {
         
         // If per-page string extraction failed, extract all of the text in the PDF.
         if try await textPieces.isEmpty, let content = pdfDocument.string {
-            contentPieces.append(.text(content: content, location: DocumentLocation(range: 0...(pdfDocument.pageCount - 1), locationStyle: "page")))
+            let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange:  0..<pdfDocument.pageCount))
+            let embeddable = EmbeddableContent.text(content: content, location: location)
+            contentPieces.append(embeddable)
         } else {
-            for (page, index) in try await textPieces {
-                contentPieces.append(.text(content: page, location: DocumentLocation(range: index...index, locationStyle: "page")))
+            for (offset, (page, index)) in try await textPieces.enumerated() {
+                let location = DocumentLocation(sequenceIndex: offset, anchor: .pdf(page: index, characterRange: nil))
+                let embeddable = EmbeddableContent.text(content: page, location: location)
+                contentPieces.append(embeddable)
             }
         }
         
-        for page in try await renderedPages {
-            contentPieces.append(
-                .image(content: page.jpgData,
-                       caption: page.label ?? "Page \(page.index) of PDF",
-                       location: DocumentLocation(range: page.index...page.index, locationStyle: "page")
-                      )
-            )
+        for (offset, page) in try await renderedPages.enumerated() {
+            let location = DocumentLocation(sequenceIndex: offset, anchor: .pdf(page: page.index, characterRange: nil))
+            let embeddable = EmbeddableContent.image(content: page.jpgData, caption: page.label ?? "Page \(page.index) of PDF", location: location)
+            contentPieces.append(embeddable)
         }
 
         return contentPieces

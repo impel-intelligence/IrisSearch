@@ -19,7 +19,7 @@ import Foundation
     #expect(digest.count == 1, "Txt digest should produce one piece.")
     
     // Freaky swift code to unwrap the enum
-    guard case let .text(content) = digest.first else {
+    guard case let .text(content, _) = digest.first else {
         #expect(Bool(false), "Digest should be a text digest")
         return
     }
