@@ -56,6 +56,12 @@ public struct DocumentLocation: Codable, Sendable {
     }
 }
 
+extension DocumentLocation {
+    public func moveSequence(to newIndex: Int) -> DocumentLocation {
+        return DocumentLocation(sequenceIndex: newIndex, documentLength: self.documentLength, anchor: self.anchor, chunk: self.chunk)
+    }
+}
+
 public enum EmbeddableContent: Codable, Sendable {
     /// A simple integer representation of the content type. Used for loading embeddable content from the SQL database.
     public enum ContentType: Int {
@@ -76,6 +82,27 @@ public enum EmbeddableContent: Codable, Sendable {
             return .image
         }
     }
+}
+
+extension EmbeddableContent {
+    public func moveLocationSequence(to newIndex: Int) -> EmbeddableContent {
+        switch self {
+        case .text(let content, let location):
+            return .text(content: content, location: location.moveSequence(to: newIndex))
+        case .image(let content, let caption, let location):
+            return .image(content: content, caption: caption, location: location.moveSequence(to: newIndex))
+        }
+    }
+    
+    public func setAnchor(to anchor: DocumentAnchor) -> EmbeddableContent {
+        switch self {
+        case .text(let content, let location):
+            return .text(content: content, location: DocumentLocation(sequenceIndex: location.sequenceIndex, documentLength: location.documentLength, anchor: anchor))
+        case .image(let content, let caption, let location):
+            return .image(content: content, caption: caption, location: DocumentLocation(sequenceIndex: location.sequenceIndex, documentLength: location.documentLength, anchor: anchor))
+        }
+    }
+
 }
 
 public extension EmbeddableContent {

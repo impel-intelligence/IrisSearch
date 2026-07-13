@@ -101,7 +101,7 @@ final class PDFDigester: FileDigester, Sendable {
         }
     }
     
-    func digest(file: URLs) async throws -> [EmbeddableContent] {
+    func digest(file: URL, contextSize: Int) async throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
         try PDFDigester.validateLocalURL(file)
 
@@ -126,14 +126,24 @@ final class PDFDigester: FileDigester, Sendable {
 
         // If per-page string extraction failed, extract all of the text in the PDF.
         if resolvedTextPieces.isEmpty, let content = pdfDocument.string {
-            let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<pdfDocument.pageCount))
-            let embeddable = EmbeddableContent.text(content: content, location: location)
-            contentPieces.append(embeddable)
+            let chunkedPieces = SentenceChunker.chunkContent(for: content, contextSize: contextSize) { range in
+                .text(characterRange: range)
+            }
+            
+            contentPieces.append(contentsOf: chunkedPieces)
         } else {
-            for (offset, (page, index)) in resolvedTextPieces.enumerated() {
-                let location = DocumentLocation(sequenceIndex: offset, documentLength: resolvedTextPieces.count, anchor: .pdf(page: index, characterRange: nil))
-                let embeddable = EmbeddableContent.text(content: page, location: location)
-                contentPieces.append(embeddable)
+            var sequenceIndex: Int = 0
+            
+            for (page, index) in resolvedTextPieces {
+                let chunkedPieces = SentenceChunker.chunkContent(for: page, contextSize: contextSize, sequenceOffset: sequenceIndex) { range in
+                    .pdf(page: index, characterRange: range)
+                }
+                
+                // Update the sequence index so the next page has proper sequencing.
+                sequenceIndex += chunkedPieces.count
+                
+                // Update content pieces with the chunked pieces.
+                contentPieces.append(contentsOf: chunkedPieces)
             }
         }
 
