@@ -103,7 +103,9 @@ public actor IrisDB {
         
         migrator.registerMigration("Add Document Locations") { db in
             try db.alter(table: DocumentPiece.databaseTableName) { table in
-                table.add(column: "location", .blob)
+                table.add(column: "sequenceIndex", .integer)
+                table.add(column: "documentLength", .integer)
+                table.add(column: "documentAnchor", .blob)
             }
         }
         
@@ -114,16 +116,29 @@ public actor IrisDB {
 // MARK: CRUD
 // Read operations
 extension IrisDB {
+    public func readPiece(uuid: UUID, pieceSequence: Int) async throws -> DocumentPiece? {
+        return try await dbPool.read { db in
+            guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
+            
+            document.pieces = try document.request(for: IrisDocument.pieces)
+                .filter({ pieceSequence == $0.sequenceIndex })
+                .limit(1)
+                .fetchAll(db)
+            
+            return document.pieces.first
+        }
+    }
+    
     public func readPieceContext(documentTitle: String, pieceSequenceIndex: Int, before: Int, after: Int) async throws -> [DocumentPiece] {
         return try await dbPool.read { db in
             // The range of pieces that we want to grab
             let sequenceRange = (pieceSequenceIndex - before)..<(pieceSequenceIndex + after)
             guard var document = try IrisDocument.fetchOne(db, key: ["title": documentTitle]) else { return [] }
             
-            // Grab all of the document pieces THEN filter. We can't use SQL to filter here since the locations are just a blob inside of SQL. This kinda sucks but is okay for now.
             document.pieces = try document.request(for: IrisDocument.pieces)
+                .filter({ sequenceRange.contains($0.sequenceIndex) })
                 .fetchAll(db)
-                .filter { piece in sequenceRange.contains(piece.content.location.sequenceIndex)}
+            
             return document.pieces
         }
     }
@@ -132,10 +147,8 @@ extension IrisDB {
         return try await dbPool.read { db in
             guard var document = try IrisDocument.fetchOne(db, key: ["title": title]) else { return nil }
             document.pieces = try document.request(for: IrisDocument.pieces)
+                .filter({ pieceSequenceRange.contains($0.sequenceIndex) })
                 .fetchAll(db)
-                .filter { piece in
-                    pieceSequenceRange.contains(piece.content.location.sequenceIndex)
-                }
             return document
         }
     }
