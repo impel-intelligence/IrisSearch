@@ -114,6 +114,19 @@ public actor IrisDB {
 // MARK: CRUD
 // Read operations
 extension IrisDB {
+    
+    public func readDocument(title: String, pieceSequenceRange: Range<Int>) async throws -> IrisDocument? {
+        return try await dbPool.read { db in
+            guard var document = try IrisDocument.fetchOne(db, key: ["title": title]) else { return nil }
+            document.pieces = try document.request(for: IrisDocument.pieces)
+                .fetchAll(db)
+                .filter { piece in
+                    pieceSequenceRange.contains(piece.content.location.sequenceIndex)
+                }
+            return document
+        }
+    }
+
     public func readDocument(title: String) async throws -> IrisDocument? {
         return try await dbPool.read { db in
             guard var document = try IrisDocument.fetchOne(db, key: ["title": title]) else { return nil }

@@ -7,9 +7,22 @@
 
 import Foundation
 
-public enum DocumentAnchor: Codable, Sendable {
+public enum DocumentAnchor: Codable, Sendable, CustomStringConvertible {
     case text(characterRange: Range<Int>)
     case pdf(page: Int, characterRange: Range<Int>?)
+    
+    public var description: String {
+        switch self {
+        case .text(let characterRange):
+            return "Characters: \(characterRange.lowerBound) up to \(characterRange.upperBound)"
+        case .pdf(let page, let characterRange):
+            if let characterRange {
+                return "Page \(page), Characters: \(characterRange.lowerBound) up to \(characterRange.upperBound)"
+            } else {
+                return "Page \(page)"
+            }
+        }
+    }
 }
 
 public struct DocumentChunk: Codable, Sendable {
@@ -36,18 +49,6 @@ public struct DocumentLocation: Codable, Sendable {
         self.sequenceIndex = sequenceIndex
         self.anchor = anchor
         self.chunk = chunk
-    }
-}
-
-public extension DocumentLocation {
-    func chunk(index: Int, totalChunks: Int, chunkSize: Int?) -> DocumentLocation {
-        var newAnchor = self.anchor
-        
-        return DocumentLocation(
-            sequenceIndex: self.sequenceIndex,
-            anchor: newAnchor,
-            chunk: DocumentChunk(index: index, totalChunks: totalChunks)
-        )
     }
 }
 
