@@ -81,20 +81,20 @@ final class PDFDigester: FileDigester, Sendable {
         }
     }
     
-    func extractText(from pages: [SendablePage]) async throws -> [String] {
-        return try await withThrowingTaskGroup(of: String?.self) { group in
+    func extractText(from pages: [SendablePage]) async throws -> [(String, Int)] {
+        return try await withThrowingTaskGroup(of: (String?, Int).self) { group in
             for wrapper in pages {
                 group.addTask {
-                    return wrapper.page.string
+                    return (wrapper.page.string, wrapper.index)
                 }
             }
             
-            var extractedPages: [String] = []
+            var extractedPages: [(String, Int)] = []
             
             // Gather results as they finish
             for try await result in group {
-                guard let content = result else { continue }
-                extractedPages.append(content)
+                guard let content = result.0 else { continue }
+                extractedPages.append((content, result.1))
             }
             
             return extractedPages
@@ -122,15 +122,20 @@ final class PDFDigester: FileDigester, Sendable {
         
         // If per-page string extraction failed, extract all of the text in the PDF.
         if try await textPieces.isEmpty, let content = pdfDocument.string {
-            contentPieces.append(.text(content: content))
+            contentPieces.append(.text(content: content, location: DocumentLocation(range: 0...(pdfDocument.pageCount - 1), locationStyle: "page")))
         } else {
-            for page in try await textPieces {
-                contentPieces.append(.text(content: page))
+            for (page, index) in try await textPieces {
+                contentPieces.append(.text(content: page, location: DocumentLocation(range: index...index, locationStyle: "page")))
             }
         }
         
         for page in try await renderedPages {
-            contentPieces.append(.image(content: page.jpgData, caption: page.label ?? "Page \(page.index) of PDF"))
+            contentPieces.append(
+                .image(content: page.jpgData,
+                       caption: page.label ?? "Page \(page.index) of PDF",
+                       location: DocumentLocation(range: page.index...page.index, locationStyle: "page")
+                      )
+            )
         }
 
         return contentPieces

@@ -22,7 +22,7 @@ final class TXTDigester: FileDigester {
         let stringContent = try String(contentsOf: file, usedEncoding: &usedEncoding)
         
         return [
-            .text(content: stringContent)
+            .text(content: stringContent, location: DocumentLocation(range: 0...(stringContent.count - 1), locationStyle: "characters"))
         ]
     }
 }
