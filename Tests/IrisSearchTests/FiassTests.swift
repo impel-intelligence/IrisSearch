@@ -23,7 +23,7 @@ class IrisDB_FaissIndexTests {
 
         let uuid = UUID()
         let content = "Test content"
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
 
         _ = try await database.createDocument(uuid: uuid, title: "Test title", description: "Test description", embeddableContent: [.text(content: content, location: location)])
         let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
@@ -41,7 +41,7 @@ class IrisDB_FaissIndexTests {
 
         let uuid = UUID()
         let content = "Test content"
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
 
         _ = try await database.createDocument(uuid: uuid, title: "Test title", description: "Test description", embeddableContent: [.text(content: content, location: location)])
         let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
@@ -69,11 +69,11 @@ class IrisDB_FaissIndexTests {
 
         let uuid = UUID()
         let originalContent = "Original Content"
-        try await database.createDocument(uuid: uuid, title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<originalContent.count)))])
+        try await database.createDocument(uuid: uuid, title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<originalContent.count)))])
 
         let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
         let expectedChunks = chunker.chunk(content: newContent, size: embedder.dimension)
-        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<newContent.count)))])
+        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<newContent.count)))])
 
         let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
         #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index should still exist after an update.")
@@ -91,11 +91,11 @@ class IrisDB_FaissIndexTests {
 
         let uuid = UUID()
         let originalContent = "Original Content"
-        try await database.createDocument(uuid: uuid, title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<originalContent.count)))])
+        try await database.createDocument(uuid: uuid, title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<originalContent.count)))])
 
         let newContent = String(repeating: "Lorem ipsum dolor sit amet. ", count: 40)
         let expectedChunks = chunker.chunk(content: newContent, size: embedder.dimension)
-        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<newContent.count)))])
+        try await database.updateDocument(uuid: uuid, title: "Updated", description: "Updated content", embeddableContent: [.text(content: newContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<newContent.count)))])
 
         let globalIndexPath = FaissIndex.IndexLocation.global.filePath(in: directories.textIndexURL)
         let globalIndex = try IDMap.from(globalIndexPath.path())
@@ -115,8 +115,8 @@ class IrisDB_FaissIndexTests {
         let secondUUID = UUID()
         let firstContent = "First Document"
         let secondContent = "Second Document"
-        let first = try await database.createDocument(uuid: firstUUID, title: "First", description: firstContent, embeddableContent: [.text(content: firstContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<firstContent.count)))])
-        let second = try await database.createDocument(uuid: secondUUID, title: "Second", description: secondContent, embeddableContent: [.text(content: secondContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<secondContent.count)))])
+        let first = try await database.createDocument(uuid: firstUUID, title: "First", description: firstContent, embeddableContent: [.text(content: firstContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<firstContent.count)))])
+        let second = try await database.createDocument(uuid: secondUUID, title: "Second", description: secondContent, embeddableContent: [.text(content: secondContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<secondContent.count)))])
 
         let expectedFirst = chunker.chunk(content: "First document", size: embedder.dimension).count
         let expectedSecond = chunker.chunk(content: "Second document", size: embedder.dimension).count
@@ -144,8 +144,8 @@ class IrisDB_FaissIndexTests {
         let removeUUID = UUID()
         let keepContent = "Document to Keep"
         let removeContent = "Document to Remove"
-        let keep = try await database.createDocument(uuid: keepUUID, title: "Keep", description: keepContent, embeddableContent: [.text(content: keepContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<keepContent.count)))])
-        let remove = try await database.createDocument(uuid: removeUUID, title: "Remove", description: removeContent, embeddableContent: [.text(content: removeContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<removeContent.count)))])
+        let keep = try await database.createDocument(uuid: keepUUID, title: "Keep", description: keepContent, embeddableContent: [.text(content: keepContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<keepContent.count)))])
+        let remove = try await database.createDocument(uuid: removeUUID, title: "Remove", description: removeContent, embeddableContent: [.text(content: removeContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<removeContent.count)))])
 
         try await database.deleteDocument(uuid: removeUUID)
 

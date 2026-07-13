@@ -38,6 +38,9 @@ public struct DocumentChunk: Codable, Sendable {
 public struct DocumentLocation: Codable, Sendable {
     /// The 0 indexed sequence of locations
     public var sequenceIndex: Int
+    
+    /// The total number of locations in a document
+    public var documentLength: Int
 
     /// Where in the document this location is
     public var anchor: DocumentAnchor
@@ -45,8 +48,9 @@ public struct DocumentLocation: Codable, Sendable {
     /// If this location was created during chunking, track that here.
     public var chunk: DocumentChunk?
     
-    public init(sequenceIndex: Int, anchor: DocumentAnchor, chunk: DocumentChunk? = nil) {
+    public init(sequenceIndex: Int, documentLength: Int, anchor: DocumentAnchor, chunk: DocumentChunk? = nil) {
         self.sequenceIndex = sequenceIndex
+        self.documentLength = documentLength
         self.anchor = anchor
         self.chunk = chunk
     }

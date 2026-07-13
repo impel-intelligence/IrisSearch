@@ -40,7 +40,7 @@ class IrisDB_InitializationTests {
         let content = "Test content"
         let title = "Test title"
         let description = "Test description"
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
         let document = try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
 
         let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
@@ -73,7 +73,7 @@ class IrisDB_InitializationTests {
         let content = "Test content"
         let title = "Test title"
         let description = "Test description"
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
 
         try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
         
@@ -98,7 +98,7 @@ class IrisDB_InitializationTests {
         let content = "Test content"
         let title = "Test title"
         let description = "Test description"
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
         try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
 
         let readDocument = try await database.readDocument(uuid: uuid)
@@ -120,7 +120,7 @@ class IrisDB_InitializationTests {
         let content = "Test content"
         let title = "Test title"
         let description = "Test description"
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
         try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
         
         let readDocument = try await database.readDocument(title: title)

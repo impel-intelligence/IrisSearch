@@ -101,7 +101,7 @@ final class PDFDigester: FileDigester, Sendable {
         }
     }
     
-    func digest(file: URL) async throws -> [EmbeddableContent] {
+    func digest(file: URLs) async throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
         try PDFDigester.validateLocalURL(file)
 
@@ -119,22 +119,26 @@ final class PDFDigester: FileDigester, Sendable {
         // Process both the page text and images at the same time.
         async let textPieces = extractText(from: pages)
         async let renderedPages: [RenderedPage] = renderPages(from: pages)
-        
+
+        // Materialize both results concurrently because of async let.
+        let resolvedTextPieces = try await textPieces
+        let resolvedRenderedPages = try await renderedPages
+
         // If per-page string extraction failed, extract all of the text in the PDF.
-        if try await textPieces.isEmpty, let content = pdfDocument.string {
-            let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange:  0..<pdfDocument.pageCount))
+        if resolvedTextPieces.isEmpty, let content = pdfDocument.string {
+            let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<pdfDocument.pageCount))
             let embeddable = EmbeddableContent.text(content: content, location: location)
             contentPieces.append(embeddable)
         } else {
-            for (offset, (page, index)) in try await textPieces.enumerated() {
-                let location = DocumentLocation(sequenceIndex: offset, anchor: .pdf(page: index, characterRange: nil))
+            for (offset, (page, index)) in resolvedTextPieces.enumerated() {
+                let location = DocumentLocation(sequenceIndex: offset, documentLength: resolvedTextPieces.count, anchor: .pdf(page: index, characterRange: nil))
                 let embeddable = EmbeddableContent.text(content: page, location: location)
                 contentPieces.append(embeddable)
             }
         }
-        
-        for (offset, page) in try await renderedPages.enumerated() {
-            let location = DocumentLocation(sequenceIndex: offset, anchor: .pdf(page: page.index, characterRange: nil))
+
+        for (offset, page) in resolvedRenderedPages.enumerated() {
+            let location = DocumentLocation(sequenceIndex: offset, documentLength: resolvedRenderedPages.count, anchor: .pdf(page: page.index, characterRange: nil))
             let embeddable = EmbeddableContent.image(content: page.jpgData, caption: page.label ?? "Page \(page.index) of PDF", location: location)
             contentPieces.append(embeddable)
         }
