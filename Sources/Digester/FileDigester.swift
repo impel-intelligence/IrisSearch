@@ -22,7 +22,7 @@ public protocol FileDigester: Sendable, Identifiable {
     static var fileTypes: [UTType] { get }
     
     init()
-    func digest(file: URL) async throws -> [EmbeddableContent]
+    func digest(file: URL, contextSize: Int) async throws -> [EmbeddableContent]
 }
 
 extension FileDigester {

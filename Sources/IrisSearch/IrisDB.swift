@@ -38,6 +38,8 @@ public actor IrisDB {
     private let dbPool: DatabasePool
     private let writeExecutor: KeyedExecutor<UUID> = KeyedExecutor()
     
+    public let contextSize: Int = 512
+    
     public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider, textChunker: TextChunker) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
 
@@ -169,8 +171,9 @@ extension IrisDB {
             for (offset, chunk) in textChunks.enumerated() {
                 let location = DocumentLocation(
                     sequenceIndex: location.sequenceIndex,
+                    documentLength: location.documentLength,
                     anchor: location.anchor,
-                    chunk: DocumentChunk(index: offset, totalChunks: textChunks.count - 1)
+                    chunk: DocumentChunk(index: offset, totalChunks: textChunks.count)
                 )
                 
                 newContent.append(EmbeddableContent.text(content: chunk, location: location))

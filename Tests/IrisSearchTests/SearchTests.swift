@@ -27,10 +27,10 @@ class IrisDB_SearchTests {
         let holySmokesContent = "Holy smokes"
         let sharksContent = "Sharks!"
 
-        try await database.createDocument(uuid: UUID(), title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<originalContent.count)))])
-        try await database.createDocument(uuid: UUID(), title: "Different", description: differentContent, embeddableContent: [.text(content: differentContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<differentContent.count)))])
-        try await database.createDocument(uuid: UUID(), title: "Holy smokes", description: holySmokesContent, embeddableContent: [.text(content: holySmokesContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<holySmokesContent.count)))])
-        try await database.createDocument(uuid: UUID(), title: "Sharks", description: sharksContent, embeddableContent: [.text(content: sharksContent, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<sharksContent.count)))])
+        try await database.createDocument(uuid: UUID(), title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<originalContent.count)))])
+        try await database.createDocument(uuid: UUID(), title: "Different", description: differentContent, embeddableContent: [.text(content: differentContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<differentContent.count)))])
+        try await database.createDocument(uuid: UUID(), title: "Holy smokes", description: holySmokesContent, embeddableContent: [.text(content: holySmokesContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<holySmokesContent.count)))])
+        try await database.createDocument(uuid: UUID(), title: "Sharks", description: sharksContent, embeddableContent: [.text(content: sharksContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<sharksContent.count)))])
         
         try await measurePerformance {
             _ = try await database.search(query: .init(text: "original"), nItems: 2)
@@ -55,7 +55,7 @@ class IrisDB_SearchTests {
                 let content = try String(contentsOf: url, encoding: .utf8)
                 let uuid = UUID()
                 sonnets[uuid] = content
-                try await database.createDocument(uuid: uuid, title: sonnet, description: sonnet, embeddableContent: [.text(content: content, location: DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count)))])
+                try await database.createDocument(uuid: uuid, title: sonnet, description: sonnet, embeddableContent: [.text(content: content, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count)))])
             }
         }
         print("Loaded Documents in \(loadingTime)")

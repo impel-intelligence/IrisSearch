@@ -32,7 +32,7 @@ class IrisDB_DocumentLocationTests {
 
         let content = "Hello world"
         let range = 0..<content.count
-        let location = DocumentLocation(sequenceIndex: 3, anchor: .text(characterRange: range))
+        let location = DocumentLocation(sequenceIndex: 3, documentLength: 1, anchor: .text(characterRange: range))
 
         try await database.createDocument(
             uuid: UUID(), title: "Text Anchor Doc", description: "desc",
@@ -60,7 +60,7 @@ class IrisDB_DocumentLocationTests {
 
         let content = "PDF content"
         let range = 5..<20
-        let location = DocumentLocation(sequenceIndex: 1, anchor: .pdf(page: 4, characterRange: range))
+        let location = DocumentLocation(sequenceIndex: 1, documentLength: 1, anchor: .pdf(page: 4, characterRange: range))
 
         try await database.createDocument(
             uuid: UUID(), title: "PDF Anchor Doc", description: "desc",
@@ -85,7 +85,7 @@ class IrisDB_DocumentLocationTests {
         let directories = TestingDirectories()
         let database = try makeDatabase(directories: directories)
 
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .pdf(page: 7, characterRange: nil))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .pdf(page: 7, characterRange: nil))
 
         try await database.createDocument(
             uuid: UUID(), title: "PDF Nil Range Doc", description: "desc",
@@ -111,7 +111,7 @@ class IrisDB_DocumentLocationTests {
         let database = try makeDatabase(directories: directories)
 
         let content = "Short"
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
 
         try await database.createDocument(
             uuid: UUID(), title: "Chunk Doc", description: "desc",
@@ -137,8 +137,8 @@ class IrisDB_DocumentLocationTests {
 
         let content1 = "First piece"
         let content2 = "Second piece"
-        let location1 = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content1.count))
-        let location2 = DocumentLocation(sequenceIndex: 1, anchor: .pdf(page: 2, characterRange: 10..<30))
+        let location1 = DocumentLocation(sequenceIndex: 0, documentLength: 2, anchor: .text(characterRange: 0..<content1.count))
+        let location2 = DocumentLocation(sequenceIndex: 1, documentLength: 2, anchor: .pdf(page: 2, characterRange: 10..<30))
 
         try await database.createDocument(
             uuid: UUID(), title: "Multi Location Doc", description: "desc",
@@ -182,7 +182,7 @@ class IrisDB_DocumentLocationTests {
         let uuid = UUID()
         let content = "Readable content"
         let range = 0..<content.count
-        let location = DocumentLocation(sequenceIndex: 5, anchor: .text(characterRange: range))
+        let location = DocumentLocation(sequenceIndex: 5, documentLength: 1, anchor: .text(characterRange: range))
 
         try await database.createDocument(
             uuid: uuid, title: "Readable Doc", description: "desc",
@@ -209,7 +209,7 @@ class IrisDB_DocumentLocationTests {
 
         let title = "Title Round Trip"
         let content = "Title fetch content"
-        let location = DocumentLocation(sequenceIndex: 2, anchor: .pdf(page: 3, characterRange: 0..<50))
+        let location = DocumentLocation(sequenceIndex: 2, documentLength: 1, anchor: .pdf(page: 3, characterRange: 0..<50))
 
         try await database.createDocument(
             uuid: UUID(), title: title, description: "desc",

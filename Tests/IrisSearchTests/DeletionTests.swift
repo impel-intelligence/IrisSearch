@@ -24,7 +24,7 @@ class IrisDB_DeletionTests {
         
         let uuid = UUID()
         let content = "Test content"
-        let location = DocumentLocation(sequenceIndex: 0, anchor: .text(characterRange: 0..<content.count))
+        let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
         let document = try await database.createDocument(uuid: uuid, title: "Test title", description: "Test description", embeddableContent: [.text(content: content, location: location)])
         
         try await database.deleteDocument(uuid: document.uuid)
