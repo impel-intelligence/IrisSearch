@@ -32,7 +32,6 @@ public actor IrisDB {
     
     private let databaseURL: URL
     private let textIndex: FaissIndex
-    private let textChunker: TextChunker
     private let textEmbedder: EmbeddingProvider
     
     private let dbPool: DatabasePool
@@ -40,11 +39,10 @@ public actor IrisDB {
     
     public let contextSize: Int = 512
     
-    public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider, textChunker: TextChunker) throws {
+    public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
 
         self.textEmbedder = textEmbedder
-        self.textChunker = textChunker
         
         if !FileManager.default.fileExists(atPath: databaseLocation.path(percentEncoded: false)) {
             try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
@@ -161,32 +159,6 @@ extension IrisDB {
 
 // Create, update and delete actions
 extension IrisDB {
-    private func chunkEmbeddableContent(_ original: EmbeddableContent) -> [EmbeddableContent] {
-        switch original {
-        case .text(let content, let location):
-            let textChunks = textChunker.chunk(content: content, size: textEmbedder.dimension)
-            
-            var newContent: [EmbeddableContent] = []
-            
-            for (offset, chunk) in textChunks.enumerated() {
-                let location = DocumentLocation(
-                    sequenceIndex: location.sequenceIndex,
-                    documentLength: location.documentLength,
-                    anchor: location.anchor,
-                    chunk: DocumentChunk(index: offset, totalChunks: textChunks.count)
-                )
-                
-                newContent.append(EmbeddableContent.text(content: chunk, location: location))
-            }
-                        
-            return newContent
-        case .image(_, _, _):
-            break
-        }
-        
-        return [original]
-    }
-    
     private func embedChunk(_ chunk: EmbeddableContent) async throws -> [Float] {
         switch chunk {
         case .text(let content, _):
@@ -200,18 +172,11 @@ extension IrisDB {
         // We need to expand `embeddableContent` to contain any data
         var pieces: [DocumentPiece] = []
         
-        // Loop over all of the embeddable content we got. We may need to chunk the content, so pass it off to a chunker then create document pieces from those chunks. We are chunking in this step, since embeddable content is provided from the Digester package which does not know about model context sizes or dimensions.
-        for content in embeddableContent {
-            // Some content will come in too big, we need to chunk it for better search.
-            let chunkedContent: [EmbeddableContent] = chunkEmbeddableContent(content)
-            var embeddings: [[Float]] = []
-            embeddings.reserveCapacity(chunkedContent.count)
-            
-            for chunk in chunkedContent {
-                let chunkEmbedding: [Float] = try await embedChunk(chunk)
-                let piece = DocumentPiece(content: chunk, embeddings: chunkEmbedding)
-                pieces.append(piece)
-            }
+        // Loop over all of the embeddable content we got and send it to the embedder for that content.
+        for chunk in embeddableContent {
+            let chunkEmbedding: [Float] = try await embedChunk(chunk)
+            let piece = DocumentPiece(content: chunk, embeddings: chunkEmbedding)
+            pieces.append(piece)
         }
                 
         // Create a document object

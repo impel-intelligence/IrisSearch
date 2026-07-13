@@ -22,6 +22,8 @@ public protocol FileDigester: Sendable, Identifiable {
     static var fileTypes: [UTType] { get }
     
     init()
+    
+    /// A function that produces chunked content from the given file url.
     func digest(file: URL, contextSize: Int) async throws -> [EmbeddableContent]
 }
 
