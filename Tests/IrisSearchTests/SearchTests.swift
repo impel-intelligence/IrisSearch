@@ -64,4 +64,33 @@ class IrisDB_SearchTests {
         let documents = try await database.search(query: .init(text: "sad music"), nItems: kItems)
         #expect(documents.count == kItems)        
     }
+    
+    @Test()
+    func basicSingleDocumentSearch() async throws {
+        let directories = TestingDirectories()
+        
+        let embedder = try NLEmbedder(language: .english)
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+
+        let id: UUID = UUID()
+        let originalContent = "Original content"
+        let differentContent = "Different"
+        let holySmokesContent = "Holy smokes"
+        let sharksContent = "Sharks!"
+        
+        let embeddableContent: [EmbeddableContent] = [
+            .text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 4, anchor: .text(characterRange: 0..<originalContent.count))),
+            .text(content: differentContent, location: DocumentLocation(sequenceIndex: 1, documentLength: 4, anchor: .text(characterRange: 0..<differentContent.count))),
+            .text(content: holySmokesContent, location: DocumentLocation(sequenceIndex: 2, documentLength: 4, anchor: .text(characterRange: 0..<holySmokesContent.count))),
+            .text(content: sharksContent, location: DocumentLocation(sequenceIndex: 3, documentLength: 4, anchor: .text(characterRange: 0..<sharksContent.count))),
+        ]
+
+        try await database.createDocument(uuid: id, title: "Original", description: originalContent, embeddableContent: embeddableContent)
+
+        try await measurePerformance {
+            let results = try await database.search(within: id, query: .init(text: "Original"), nItems: 5)
+            let topResultContent = results.importantPieces.first?.content.textContent ?? ""
+            #expect(topResultContent.contains("Original"))
+        }
+    }
 }

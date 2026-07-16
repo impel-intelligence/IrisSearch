@@ -206,16 +206,19 @@ extension FaissIndex {
         return zip(ids, distances).filter { $0.0 != -1 }.map { (id: $0, distance: $1) }
     }
     
-    func search(query: [Float], kItems k: Int, collection: UUID) throws -> [Int] {
+    func search(query: [Float], kItems k: Int, collection: UUID) throws -> [(id: Int, distance: Float)] {
         var query = query
         faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &query)
         
         let index: FlatIndex = try getDocumentIndex(uuid: collection)
         
         let searchResults = try index.search([query], k: k)
-        let ids = searchResults.labels.flatMap { $0 }
         
-        return ids
+        // We only ever pass a single query, so take the first row of each.
+        let ids = searchResults.labels.first ?? []
+        let distances = searchResults.distances.first ?? []
+
+        return zip(ids, distances).filter { $0.0 != -1 }.map { (id: $0, distance: $1) }
     }
     
 //    private func translateLabels(labels: [Int], documents: [Document]) throws -> [Document] {
