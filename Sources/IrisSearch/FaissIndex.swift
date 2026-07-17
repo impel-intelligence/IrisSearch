@@ -215,37 +215,4 @@ extension FaissIndex {
 
         return zip(ids, distances).filter { $0.0 != -1 }.map { (id: $0, distance: $1) }
     }
-    
-//    private func translateLabels(labels: [Int], documents: [Document]) throws -> [Document] {
-//        var resultingDocuments: [Document] = []
-//
-//        let documentsCount = documents.count
-//        for index in labels where (index < documentsCount && index >= 0) {
-//            resultingDocuments.append(documents[index])
-//        }
-//
-//        return resultingDocuments
-//    }
-    
-//    public func search(query: [Float], amount: Int) throws -> [Document] {
-//        var query = query
-//        faiss_fvec_renorm_L2(vectorDimensions, 1, &query)
-//        
-//        let indexPackage = try retrieveIndexAll()
-//        let labels = try self.searchIndex(index: indexPackage.index, query: query, amount: amount)
-//        let resultingDocuments = try translateLabels(labels: labels, documents: indexPackage.documents)
-//        
-//        return resultingDocuments
-//    }
-//    
-//    public func search(in collection: Collection, query: [Float], amount: Int) throws -> [Document] {
-//        var query = query
-//        faiss_fvec_renorm_L2(vectorDimensions, 1, &query)
-//        
-//        let indexPackage = try retrieveIndex(for: collection)
-//        let labels = try self.searchIndex(index: indexPackage.index, query: query, amount: amount)
-//        let resultingDocuments = try translateLabels(labels: labels, documents: indexPackage.documents)
-//        
-//        return resultingDocuments
-//    }
 }
