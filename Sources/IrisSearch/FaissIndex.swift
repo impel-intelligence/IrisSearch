@@ -36,7 +36,7 @@ final class FaissIndex {
     
     var cachedGlobalIndex: IDMap?
     
-    var cachedDocumentIndices: [UUID: FlatIndex] = [:]
+    var cachedDocumentIndices: [UUID: IDMap] = [:]
     
     init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws {
         self.indexLocation = indexLocation
@@ -66,42 +66,54 @@ final class FaissIndex {
 }
 
 // MARK: Index Management
-extension FaissIndex {    
-    private func getGlobalIndex() throws -> IDMap {
-        let indexURL = IndexLocation.global.filePath(in: indexLocation)
-        
-        // Quick exit with the cached global index
-        if let cachedGlobalIndex {
+extension FaissIndex {
+    private func cache(location: IndexLocation, index: IDMap) {
+        switch location {
+        case .document(let uuid):
+            cachedDocumentIndices[uuid] = index
+        case .global:
+            cachedGlobalIndex = index
+        }
+    }
+    
+    private func getCached(location: IndexLocation) -> IDMap? {
+        // Quick exit with cached indexes
+        switch location {
+        case .document(let uuid):
+            if let index = cachedDocumentIndices[uuid] {
+                return index
+            }
+        case .global:
             return cachedGlobalIndex
+        }
+        
+        return nil
+    }
+    
+    private func getIndex(for location: IndexLocation) throws -> IDMap {
+        let indexURL = location.filePath(in: indexLocation)
+        
+        if let cached = getCached(location: location) {
+            return cached
         }
         
         if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)),
            let idMap = try? IDMap.from(indexURL.path(percentEncoded: false)) {
-            cachedGlobalIndex = idMap
+            cache(location: location, index: idMap)
             return idMap
         } else {
             let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .innerProduct)
             let idMap = try IDMap(subIndex: coreIndex)
-            cachedGlobalIndex = idMap
+            cache(location: location, index: idMap)
             return idMap
         }
+
     }
-    
-    private func getDocumentIndex(uuid: UUID) throws -> FlatIndex {
-        if let index = cachedDocumentIndices[uuid] {
-            return index
-        }
-        
-        // Use a flat index for single document indices as we do not need anything faster.
-        let index = try FlatIndex(d: embeddingProvider.dimension, metricType: .innerProduct)
-        cachedDocumentIndices[uuid] = index
-        return index
-    }
-    
+
     private func removeDocumentFromGlobalIndex(ids: [Int]) throws {
         let indexURL = IndexLocation.global.filePath(in: indexLocation)
         
-        let index: IDMap = try getGlobalIndex()
+        let index: IDMap = try getIndex(for: .global)
         
         // Delete all indices related to this document.
         try index.removeIds(ids)
@@ -113,13 +125,28 @@ extension FaissIndex {
     private func addDocumentToGlobalIndex(document: IrisDocument) throws {
         let indexURL = IndexLocation.global.filePath(in: indexLocation)
         
+        try add(pieces: document.pieces, to: IndexLocation.global)
+    }
+    
+    private func refreshIndex(for document: IrisDocument) throws {
+        let indexURL = IndexLocation.document(uuid: document.uuid).filePath(in: indexLocation)
+        
+        // If an index already exists, remove it so we can create a new one.
+        if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)) {
+            try FileManager.default.removeItem(at: indexURL)
+        }
+                
+        try add(pieces: document.pieces, to: IndexLocation.document(uuid: document.uuid))
+    }
+    
+    private func add(pieces: [DocumentPiece], to location: IndexLocation) throws {
         // Create parallel arrays of embeddings and their corresponding document indices
         var embeddings: [[Float]] = []
         var ids: [Int] = []
         
         // For each embedding in the document, add it with the pieces's rowID as its ID
         // TODO: Remove empty embeddings dodge. It is here because images are not currently embedded.
-        for piece in document.pieces where !piece.embeddings.isEmpty {
+        for piece in pieces where !piece.embeddings.isEmpty {
             guard let pieceID = piece.id else { continue }
             
             var embedding = piece.embeddings
@@ -134,8 +161,8 @@ extension FaissIndex {
             ids.append(Int(pieceID))
         }
         
-        let index: IDMap = try getGlobalIndex()
-        
+        let index = try getIndex(for: location)
+
         // Check if the index needs to be trained, if so train.
         if !index.isTrained {
             try index.train(embeddings)
@@ -143,48 +170,16 @@ extension FaissIndex {
         
         // Add the data to the index with their corresponding IDs
         try index.add(embeddings, ids: ids)
-        // Save the global index
-        try index.saveToFile(indexURL.path(percentEncoded: false))
-    }
-    
-    private func refreshIndex(for document: IrisDocument) throws {
-        let indexURL = IndexLocation.document(uuid: document.uuid).filePath(in: indexLocation)
         
-        // If an index already exists, remove it so we can create a new one.
-        if FileManager.default.fileExists(atPath: indexURL.path(percentEncoded: false)) {
-            try FileManager.default.removeItem(at: indexURL)
-        }
-        
-        // Use a flat index for single document indices as we do not need anything faster.
-        let index = try getDocumentIndex(uuid: document.uuid)
-        
-        // TODO: Remove empty embeddings dodge. It is here because images are not currently embedded.
-        var embeddings = document.pieces.map(\.embeddings).filter({ !$0.isEmpty })
-        
-        // Make sure that all of the embeddings are the right size. Otherwise index.add will crash.
-        for embedding in embeddings where embedding.count != embeddingProvider.dimension {
-            throw FaissError.invalidVectorDimension(size: embedding.count, expected: embeddingProvider.dimension)
-        }
+        // Save the index to a file
+        let indexURL = location.filePath(in: indexLocation)
 
-        for index in 0..<embeddings.count {
-            faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &embeddings[index])
-        }
-
-        // Check if the index needs to be trained, if so train.
-        if !index.isTrained {
-            try index.train(embeddings)
-        }
-        
-        // Add the data to the index
-        try index.add(embeddings)
-        
         try index.saveToFile(indexURL.path(percentEncoded: false))
     }
 }
 
 // MARK: Searching
 extension FaissIndex {
-    
     /// Search the FaissIndex with an embedded query.
     /// - Parameters:
     ///   - query: The query embedding.
@@ -194,7 +189,7 @@ extension FaissIndex {
         var query = query
         faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &query)
 
-        let index: IDMap = try getGlobalIndex()
+        let index: IDMap = try getIndex(for: .global)
 
         let searchResults = try index.search([query], k: k)
 
@@ -210,7 +205,7 @@ extension FaissIndex {
         var query = query
         faiss_fvec_renorm_L2(embeddingProvider.dimension, 1, &query)
         
-        let index: FlatIndex = try getDocumentIndex(uuid: collection)
+        let index: IDMap = try getIndex(for: .document(uuid: collection))
         
         let searchResults = try index.search([query], k: k)
         
