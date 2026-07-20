@@ -17,79 +17,81 @@ struct PDFArgument {
     var numberOfPagesWithText: Int
 }
 
-@Test("Ensure pdf digester can process PDFs", arguments: [
-    PDFArgument(
-        url: Bundle.module.url(forResource: "simple-pdf-feature-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!,
-        numberOfPages: 3, numberOfPagesWithText: 2),
-    PDFArgument(
-        url: Bundle.module.url(forResource: "pdf-ingestion-test-suite", withExtension: "pdf", subdirectory: "Test Documents/pdf")!,
-        numberOfPages: 10, numberOfPagesWithText: 9)
-]) func testPDFDigester(pdfFile: PDFArgument) async throws {
-    let digestor = PDFDigester()
-    let digest = try await digestor.digest(file: pdfFile.url, contextSize: 100000)
+struct PDFTests {
+    @Test("Ensure pdf digester can process PDFs", arguments: [
+        PDFArgument(
+            url: Bundle.module.url(forResource: "simple-pdf-feature-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!,
+            numberOfPages: 3, numberOfPagesWithText: 2),
+        PDFArgument(
+            url: Bundle.module.url(forResource: "pdf-ingestion-test-suite", withExtension: "pdf", subdirectory: "Test Documents/pdf")!,
+            numberOfPages: 10, numberOfPagesWithText: 9)
+    ]) func testPDFDigester(pdfFile: PDFArgument) async throws {
+        let digestor = PDFDigester()
+        let digest = try await digestor.digest(file: pdfFile.url, contextSize: 100000)
         
-    let nImage = digest.count { content in
-        switch content {
-        case .image:
-            return true
-        default:
-            return false
+        let nImage = digest.count { content in
+            switch content {
+            case .image:
+                return true
+            default:
+                return false
+            }
         }
-    }
-
-    let nText = digest.count { content in
-        switch content {
-        case .text:
-            return true
-        default:
-            return false
+        
+        let nText = digest.count { content in
+            switch content {
+            case .text:
+                return true
+            default:
+                return false
+            }
         }
-    }
-
-    
-    #expect(nImage == pdfFile.numberOfPages, "The number of images should match the number of PDF pages.")
-    #expect(nText == pdfFile.numberOfPagesWithText, "The number of text elements should match the number of PDF pages with text.")
-}
-
-// Authored by Claude Sonnet 5 (Anthropic) on 2026-07-13.
-// PDFDigester chunks each page separately, then patches every text piece's documentLength to the true
-// whole-document total once all pages are known (see the `withNewDocumentLength` call in `digest`). A small
-// contextSize here forces multiple chunks per page, so a page-only (unreconciled) documentLength would
-// visibly diverge from the true total this test checks for.
-@Test("Text pieces across all pages share one correct documentLength and a contiguous sequenceIndex", arguments: [
-    Bundle.module.url(forResource: "simple-pdf-feature-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!,
-    Bundle.module.url(forResource: "pdf-ingestion-test-suite", withExtension: "pdf", subdirectory: "Test Documents/pdf")!
-]) func testPDFDigesterDocumentLengthReconciliation(pdfFile: URL) async throws {
-    let digestor = PDFDigester()
-    let digest = try await digestor.digest(file: pdfFile, contextSize: 200)
-
-    let textLocations: [DocumentLocation] = digest.compactMap { piece in
-        guard case .text = piece else { return nil }
-        return piece.location
-    }
-
-    #expect(!textLocations.isEmpty)
-    #expect(textLocations.count > 1, "Test precondition: a small contextSize should split the PDF into multiple text pieces across its pages")
-
-    let expectedDocumentLength = textLocations.count
-    for location in textLocations {
-        #expect(location.documentLength == expectedDocumentLength, "Every text piece should report the true total text-piece count across the whole document, not just its own page's count")
-    }
-
-    // sequenceIndex should be contiguous and unique across the whole document, proving pages were reconciled
-    // into one continuous sequence rather than each page restarting its own sequence at 0.
-    let sequenceIndices = textLocations.map(\.sequenceIndex).sorted()
-    #expect(sequenceIndices == Array(0..<expectedDocumentLength), "sequenceIndex values should be contiguous 0..<documentLength across all pages")
-}
-
-@Test("Speed Test", arguments: [
-    Bundle.module.url(forResource: "long-pdf-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!
-]) func testPDFConversioNSpeed(pdfURL: URL) async throws {
-    let digestor = PDFDigester()
-    
-    let performance = try await measurePerformance(nRuns: 10) {
-        _ = try await digestor.digest(file: pdfURL, contextSize: 100000)
+        
+        
+        #expect(nImage == pdfFile.numberOfPages, "The number of images should match the number of PDF pages.")
+        #expect(nText == pdfFile.numberOfPagesWithText, "The number of text elements should match the number of PDF pages with text.")
     }
     
-    #expect(performance.average < 1)
+    // Authored by Claude Sonnet 5 (Anthropic) on 2026-07-13.
+    // PDFDigester chunks each page separately, then patches every text piece's documentLength to the true
+    // whole-document total once all pages are known (see the `withNewDocumentLength` call in `digest`). A small
+    // contextSize here forces multiple chunks per page, so a page-only (unreconciled) documentLength would
+    // visibly diverge from the true total this test checks for.
+    @Test("Text pieces across all pages share one correct documentLength and a contiguous sequenceIndex", arguments: [
+        Bundle.module.url(forResource: "simple-pdf-feature-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!,
+        Bundle.module.url(forResource: "pdf-ingestion-test-suite", withExtension: "pdf", subdirectory: "Test Documents/pdf")!
+    ]) func testPDFDigesterDocumentLengthReconciliation(pdfFile: URL) async throws {
+        let digestor = PDFDigester()
+        let digest = try await digestor.digest(file: pdfFile, contextSize: 200)
+        
+        let textLocations: [DocumentLocation] = digest.compactMap { piece in
+            guard case .text = piece else { return nil }
+            return piece.location
+        }
+        
+        #expect(!textLocations.isEmpty)
+        #expect(textLocations.count > 1, "Test precondition: a small contextSize should split the PDF into multiple text pieces across its pages")
+        
+        let expectedDocumentLength = textLocations.count
+        for location in textLocations {
+            #expect(location.documentLength == expectedDocumentLength, "Every text piece should report the true total text-piece count across the whole document, not just its own page's count")
+        }
+        
+        // sequenceIndex should be contiguous and unique across the whole document, proving pages were reconciled
+        // into one continuous sequence rather than each page restarting its own sequence at 0.
+        let sequenceIndices = textLocations.map(\.sequenceIndex).sorted()
+        #expect(sequenceIndices == Array(0..<expectedDocumentLength), "sequenceIndex values should be contiguous 0..<documentLength across all pages")
+    }
+    
+    @Test("Speed Test", arguments: [
+        Bundle.module.url(forResource: "long-pdf-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!
+    ]) func testPDFConversioNSpeed(pdfURL: URL) async throws {
+        let digestor = PDFDigester()
+        
+        let performance = try await measurePerformance(nRuns: 10) {
+            _ = try await digestor.digest(file: pdfURL, contextSize: 100000)
+        }
+        
+        #expect(performance.average < 1)
+    }
 }

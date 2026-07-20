@@ -28,6 +28,38 @@ final class HTMLandXMLDigester: FileDigester {
 
     required init() { }
     
+    func digest(file: URL, contextSize: Int) throws -> [EmbeddableContent] {
+        // Will bail out if the url is not valid
+        try HTMLandXMLDigester.validateLocalURL(file)
+        
+        let document: Document = try SwiftSoup.parse(file)
+
+        let (headers, orphaned) = try collectHeaders(in: document, index: 0)
+        
+        let documentLength = headers.values.map(\.count).reduce(0, +) + orphaned.count
+        
+        var embeddableContent: [EmbeddableContent] = []
+        
+        for indexed in orphaned {
+            let element = indexed.element
+            
+            let text = try element.text()
+            let selector = try element.cssSelector()
+            let anchor = DocumentAnchor.selector(selectors: [selector])
+            
+            let content = EmbeddableContent.text(
+                content: text,
+                location: DocumentLocation(sequenceIndex: indexed.index, documentLength: documentLength, anchor: anchor)
+            )
+            
+            embeddableContent.append(content)
+        }
+        
+        return SentenceChunker.chunkContent(for: "", contextSize: contextSize) { range in
+            return .text(characterRange: range)
+        }
+    }
+    
     func collectHeaders(in element: Element, index: Int) throws -> (headers: [IndexedElement: [IndexedElement]], orphans: [IndexedElement]) {
         var orphaned: [IndexedElement] = []
         var headers: [IndexedElement: [IndexedElement]] = [:]
@@ -56,39 +88,5 @@ final class HTMLandXMLDigester: FileDigester {
         return (headers, orphaned)
     }
     
-    func digest(file: URL, contextSize: Int) throws -> [EmbeddableContent] {
-        // Will bail out if the url is not valid
-        try HTMLandXMLDigester.validateLocalURL(file)
-        
-        let document: Document = try SwiftSoup.parse(file)
 
-        let (headers, orphaned) = try collectHeaders(in: document, index: 0)
-        
-        let documentLength = headers.values.map(\.count).reduce(0, +) + orphaned.count
-        
-        var embeddableContent: [EmbeddableContent] = []
-        
-        for indexed in orphaned {
-            let element = indexed.element
-            
-            let text = try element.text()
-            let selector = try element.cssSelector()
-            let anchor = DocumentAnchor.selector(selectors: [selector])
-            
-            let content = EmbeddableContent.text(
-                content: text,
-                location: DocumentLocation(sequenceIndex: indexed.index, documentLength: documentLength, anchor: anchor)
-            )
-            
-            embeddableContent.append(content)
-        }
-        
-        
-        
-        
-        
-        return SentenceChunker.chunkContent(for: "", contextSize: contextSize) { range in
-            return .text(characterRange: range)
-        }
-    }
 }

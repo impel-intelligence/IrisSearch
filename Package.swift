@@ -29,8 +29,7 @@ let package = Package(
         .target(
             name: "IrisCommon",
             dependencies: [
-                .product(name: "GRDB", package: "GRDB.swift"),
-                .product(name: "SwiftSoup", package: "SwiftSoup", condition: .when(traits: ["html"]))
+                .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
         .testTarget(name: "IrisCommonTests", dependencies: ["IrisCommon", "TestUtilities"]),
@@ -65,7 +64,10 @@ let package = Package(
         // Digester
         .target(
             name: "Digester",
-            dependencies: ["IrisCommon"]
+            dependencies: [
+                "IrisCommon",
+                .product(name: "SwiftSoup", package: "SwiftSoup", condition: .when(traits: ["html"]))
+            ]
         ),
         .testTarget(
             name: "DigesterTests",

@@ -11,7 +11,6 @@ import IrisCommon
 import Foundation
 
 struct SentenceChunkerTests {
-
     private func chunk(_ content: String, contextSize: Int, sequenceOffset: Int = 0) -> [EmbeddableContent] {
         SentenceChunker.chunkContent(for: content, contextSize: contextSize, sequenceOffset: sequenceOffset) { range in
             .text(characterRange: range)
