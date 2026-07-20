@@ -41,66 +41,6 @@ final class PDFDigester: FileDigester, Sendable {
 
     }
     
-    /// Render PDF pages to CGImages
-    /// This runs fairly quickly, with a 200 page document taking around ​0.13 seconds. It is not instead, but fairly close.
-    ///
-    /// - Parameter pages: the PDFPages to render from
-    /// - Returns: A set of CGImages for each page in the PDF, rendered at the same size they are in the PDF.
-    func renderPages(from pages: [SendablePage]) async throws -> [RenderedPage] {
-        return try await withThrowingTaskGroup(of: RenderedPage?.self) { group in
-            for wrapper in pages {
-                group.addTask {
-                    let page = wrapper.page
-                    let rect = page.bounds(for: .mediaBox)
-                    
-                    guard let context = CGContext(
-                        data: nil,
-                        width: Int(rect.width),
-                        height: Int(rect.height),
-                        bitsPerComponent: 8,
-                        bytesPerRow: 0,
-                        space: CGColorSpaceCreateDeviceRGB(),
-                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                    ) else { return nil }
-                    
-                    page.draw(with: .mediaBox, to: context)
-                    guard let image = context.makeImage(), let jpgData = image.jpgData else { return nil }
-                    return RenderedPage(index: wrapper.index, jpgData: jpgData, label: page.label)
-                }
-            }
-            
-            var renderedPages: [RenderedPage] = []
-            
-            // Gather results as they finish
-            for try await result in group {
-                guard let page = result else { continue }
-                renderedPages.append(page)
-            }
-            
-            return renderedPages
-        }
-    }
-    
-    func extractText(from pages: [SendablePage]) async throws -> [(String, Int)] {
-        return try await withThrowingTaskGroup(of: (String?, Int).self) { group in
-            for wrapper in pages {
-                group.addTask {
-                    return (wrapper.page.string, wrapper.index)
-                }
-            }
-            
-            var extractedPages: [(String, Int)] = []
-            
-            // Gather results as they finish
-            for try await result in group {
-                guard let content = result.0 else { continue }
-                extractedPages.append((content, result.1))
-            }
-            
-            return extractedPages
-        }
-    }
-    
     func digest(file: URL, contextSize: Int) async throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
         try PDFDigester.validateLocalURL(file)
@@ -157,5 +97,65 @@ final class PDFDigester: FileDigester, Sendable {
         }
 
         return contentPieces
+    }
+    
+    func extractText(from pages: [SendablePage]) async throws -> [(String, Int)] {
+        return try await withThrowingTaskGroup(of: (String?, Int).self) { group in
+            for wrapper in pages {
+                group.addTask {
+                    return (wrapper.page.string, wrapper.index)
+                }
+            }
+            
+            var extractedPages: [(String, Int)] = []
+            
+            // Gather results as they finish
+            for try await result in group {
+                guard let content = result.0 else { continue }
+                extractedPages.append((content, result.1))
+            }
+            
+            return extractedPages
+        }
+    }
+    
+    /// Render PDF pages to CGImages
+    /// This runs fairly quickly, with a 200 page document taking around ​0.13 seconds. It is not instead, but fairly close.
+    ///
+    /// - Parameter pages: the PDFPages to render from
+    /// - Returns: A set of CGImages for each page in the PDF, rendered at the same size they are in the PDF.
+    func renderPages(from pages: [SendablePage]) async throws -> [RenderedPage] {
+        return try await withThrowingTaskGroup(of: RenderedPage?.self) { group in
+            for wrapper in pages {
+                group.addTask {
+                    let page = wrapper.page
+                    let rect = page.bounds(for: .mediaBox)
+                    
+                    guard let context = CGContext(
+                        data: nil,
+                        width: Int(rect.width),
+                        height: Int(rect.height),
+                        bitsPerComponent: 8,
+                        bytesPerRow: 0,
+                        space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    ) else { return nil }
+                    
+                    page.draw(with: .mediaBox, to: context)
+                    guard let image = context.makeImage(), let jpgData = image.jpgData else { return nil }
+                    return RenderedPage(index: wrapper.index, jpgData: jpgData, label: page.label)
+                }
+            }
+            
+            var renderedPages: [RenderedPage] = []
+            
+            // Gather results as they finish
+            for try await result in group {
+                guard let page = result else { continue }
+                renderedPages.append(page)
+            }
+            
+            return renderedPages
+        }
     }
 }

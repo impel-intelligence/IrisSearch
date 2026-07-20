@@ -22,12 +22,19 @@ struct FactoryTests {
         #expect(type(of: TXTDigester()) == type(of: returnedDigester))
     }
     
-    
     @Test("Ensure the pdf digester is returned by the factory is correct for various pdf UTTypes.", arguments: [
         UTType.pdf,
         UTType("com.adobe.pdf")!,
     ]) func testPDFDigesterReturned(utType: UTType) throws {
         let returnedDigester = try DigesterFactory.digester(for: utType)
         #expect(type(of: PDFDigester()) == type(of: returnedDigester))
+    }
+
+    @Test("Ensure the HTML/XML digester is returned by the factory for HTML and XML UTTypes.", arguments: [
+        UTType.html,
+        UTType.xml,
+    ]) func testHTMLandXMLDigesterReturned(utType: UTType) throws {
+        let returnedDigester = try DigesterFactory.digester(for: utType)
+        #expect(type(of: HTMLandXMLDigester()) == type(of: returnedDigester))
     }
 }
