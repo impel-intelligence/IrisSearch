@@ -37,16 +37,27 @@ struct SentenceChunker {
         return results
     }
     
-    public static func chunkContent(for content: String, contextSize: Int, sequenceOffset: Int = 0, anchorMaker: (Range<Int>) -> DocumentAnchor) -> [EmbeddableContent] {
-        let overlapCharacters = Int(Double(contextSize) * 0.05)
-        var goodChunks: [[Sentence]] = []
+    /// Chunks content into chunks of size `contextSize`.
+    ///
+    /// - Parameters:
+    ///   - content: The content to chunk.
+    ///   - contextSize: The size of content chunks.
+    ///   - prefix: The prefix that will be appended to every chunk of content . `prefix.count` will be removed from `contextSize` to ensure chunks are under `contextSize`.
+    ///   - sequenceOffset: The offset for starting the chunk sequencing. Sequencing informs embeddable content of its position in the document.
+    ///   - anchorMaker: A function that returns a ``IrisCommon/DocumentAnchor``, this should provide an appriate anchor for the integer range of the chunk.
+    /// - Returns: An ``IrisCommon/EmbeddableContent`` for each chunk of the input content.
+    public static func chunkContent(for content: String, contextSize: Int, prefix: String = "", sequenceOffset: Int = 0, anchorMaker: (Range<Int>) -> DocumentAnchor) -> [EmbeddableContent] {
+        let effectiveContextSize = max(contextSize - prefix.count, 1)
+        let overlapCharacters = Int(Double(effectiveContextSize) * 0.05)
         
+        var goodChunks: [[Sentence]] = []
         var inProgress: [Sentence] = []
+        
         var inProgressContentLength: Int = 0
         
         for sentence in sentences(for: content) {
             // If adding this content to the builder would push it over the contextSize, save the current builder and create a new one.
-            if (inProgressContentLength + sentence.content.count) > contextSize {
+            if (inProgressContentLength + sentence.content.count) > effectiveContextSize {
                 // Create good chunk
                 goodChunks.append(inProgress)
                 
@@ -76,7 +87,7 @@ struct SentenceChunker {
         // Convert sentence chunks into embeddable content and return it
         return goodChunks.enumerated().compactMap { offset, chunk in
             guard let first = chunk.first, let last = chunk.last else { return nil }
-            let chunkContent = chunk.map(\.content).joined()
+            let chunkContent = prefix + chunk.map(\.content).joined()
             let chunkRange = first.range.lowerBound..<last.range.upperBound
             let anchor = anchorMaker(chunkRange)
             let location = DocumentLocation(sequenceIndex: sequenceOffset + offset, documentLength: goodChunks.count, anchor: anchor)
