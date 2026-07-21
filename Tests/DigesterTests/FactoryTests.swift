@@ -57,9 +57,16 @@ struct FactoryTests {
     }
 
     @Test("Ensure overlapping types pick the right factory")
-    func testHTMLandXMLDigesterReturned() throws {
+    func testOverlappingTypes() throws {
         // .html is a descendent of .text. This used to make the DigesterFactory return the TXTDigester, so this tests make sure that no longer happens.
         let returnedDigester = try DigesterFactory.digester(for: .html)
         #expect(type(of: HTMLandXMLDigester()) == type(of: returnedDigester))
+    }
+    
+    @Test("Make sure that the no digester error is thrown when there is an unsupported type")
+    func testNoDigesterFOund() throws {
+        #expect(throws: DigestionError.self) {
+            try DigesterFactory.digester(for: .font)
+        }
     }
 }
