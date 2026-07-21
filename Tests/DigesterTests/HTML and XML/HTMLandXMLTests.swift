@@ -36,10 +36,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("Every header in headers.html produces its own anchored text chunk, in document order")
-    func testHeaderSections() throws {
+    func testHeaderSections() async throws {
         let htmlFile = Bundle.module.url(forResource: "headers", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 1000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 1000)
 
         var validHeaders = ["Header 1", "Header 1a", "Header 2", "Header 2a", "Header 2b", "Header 2c", "Header 2d", "Header 2e", "Long Header"]
 
@@ -59,10 +59,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("Each header's own paragraph is grouped into its chunk, and not bled into a neighboring header's chunk")
-    func testHeaderContentIsGroupedCorrectly() throws {
+    func testHeaderContentIsGroupedCorrectly() async throws {
         let htmlFile = Bundle.module.url(forResource: "headers", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 1000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 1000)
 
         let header1 = try #require(digest.first { $0.textContent?.contains("Header 1</p>") != true && $0.textContent?.contains("Header 1:") == true || $0.textContent?.contains("Header 1\n") == true }?.textContent)
         _ = header1 // fixture headers have no ids, so fall back to a plainer per-chunk scan below
@@ -87,10 +87,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("A section too large for one chunk is split, and every sub-chunk still carries its header")
-    func testLongHeaderSectionSplitsWithHeaderPrefix() throws {
+    func testLongHeaderSectionSplitsWithHeaderPrefix() async throws {
         let htmlFile = Bundle.module.url(forResource: "headers", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 200)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 200)
 
         let texts = digest.compactMap { piece -> String? in
             guard case let .text(content, _) = piece else { return nil }
@@ -107,10 +107,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("Overview's chunk contains its own intro text and not a neighboring section's text")
-    func testOverviewSectionContent() throws {
+    func testOverviewSectionContent() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let overview = try #require(chunkText(forID: "overview", in: digest))
         #expect(overview.contains("Jump straight to the"))
@@ -118,10 +118,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("Headers nested three to five levels deep (h3-h6) each still produce their own chunk")
-    func testDeeplyNestedHeadersAllProduceSections() throws {
+    func testDeeplyNestedHeadersAllProduceSections() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let subsection = try #require(chunkText(forID: "section-a-sub", in: digest))
         #expect(subsection.contains("A subsection nested under Section A."))
@@ -137,10 +137,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("A header with multiple sibling paragraphs captures all of them in its chunk")
-    func testSectionBHasBothParagraphs() throws {
+    func testSectionBHasBothParagraphs() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let sectionB = try #require(chunkText(forID: "section-b", in: digest))
         #expect(sectionB.contains("Pellentesque velit leo"))
@@ -148,10 +148,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("Anchor text inside <ul><li> link lists is captured as part of the section's text")
-    func testLinkSectionsCaptureAnchorText() throws {
+    func testLinkSectionsCaptureAnchorText() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let external = try #require(chunkText(forID: "external-links", in: digest))
         #expect(external.contains("Wikipedia"))
@@ -171,10 +171,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("A simple table's headers, data cells, and caption are all flattened into the section's text")
-    func testSimpleTableContent() throws {
+    func testSimpleTableContent() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let simpleTable = try #require(chunkText(forID: "simple-table", in: digest))
         #expect(simpleTable.contains("Task"))
@@ -185,10 +185,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("A table split across thead/tbody/tfoot has every row (including the footer) flattened into text")
-    func testPricingTableContent() throws {
+    func testPricingTableContent() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let pricingTable = try #require(chunkText(forID: "pricing-table", in: digest))
         #expect(pricingTable.contains("Starter"))
@@ -199,10 +199,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("A table using rowspan/colspan still has every cell's text captured, plus its caption")
-    func testComplexTableContent() throws {
+    func testComplexTableContent() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let complexTable = try #require(chunkText(forID: "complex-table", in: digest))
         #expect(complexTable.contains("North America"))
@@ -213,10 +213,10 @@ struct HTMLandXMLTests {
     }
 
     @Test("Closing Notes captures its own text and the anchor text of its link back to Overview")
-    func testClosingNotesContent() throws {
+    func testClosingNotesContent() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let closing = try #require(chunkText(forID: "closing", in: digest))
         #expect(closing.contains("email and tel links"))
@@ -230,10 +230,10 @@ struct HTMLandXMLTests {
     // whatever section is currently active — "Image Gallery" — instead of being lost to a
     // separate merge step.
     @Test("The Image Gallery header and its figure captions appear together in the digest")
-    func testImageGalleryContentIsNotDropped() throws {
+    func testImageGalleryContentIsNotDropped() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let combined = allText(in: digest)
         #expect(combined.contains("Image Gallery"), "The header text itself should appear in the output")
@@ -247,10 +247,10 @@ struct HTMLandXMLTests {
     // so the prose TextNodes sitting directly beside the <img> are captured via the wrapper's own
     // selector instead of being silently skipped.
     @Test("Prose surrounding an inline <img> is preserved, and the section header appears")
-    func testInlineImageProseIsNotDropped() throws {
+    func testInlineImageProseIsNotDropped() async throws {
         let htmlFile = Bundle.module.url(forResource: "mixed-content", withExtension: "html", subdirectory: "Test Documents/html")!
         let digestor = HTMLandXMLDigester()
-        let digest = try digestor.digest(file: htmlFile, contextSize: 10_000)
+        let digest = try await digestor.digest(file: htmlFile, contextSize: 10_000)
 
         let combined = allText(in: digest)
         #expect(combined.contains("Inline and Linked Images"), "The header text itself should appear in the output")

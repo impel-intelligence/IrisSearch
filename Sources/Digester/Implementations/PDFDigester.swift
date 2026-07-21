@@ -120,7 +120,7 @@ final class PDFDigester: FileDigester, Sendable {
     }
     
     /// Render PDF pages to CGImages
-    /// This runs fairly quickly, with a 200 page document taking around ​0.13 seconds. It is not instead, but fairly close.
+    /// This runs fairly quickly, with a 200 page document taking around ​0.64 seconds. It is not instead, but fairly close.
     ///
     /// - Parameter pages: the PDFPages to render from
     /// - Returns: A set of CGImages for each page in the PDF, rendered at the same size they are in the PDF.

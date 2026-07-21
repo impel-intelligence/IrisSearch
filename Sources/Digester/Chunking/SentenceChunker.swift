@@ -13,6 +13,9 @@ struct SentenceChunker {
         let range: Range<Int>
     }
     
+    /// Breaks `content` into sentences with corresponding ranges in the overall `content`
+    /// - Parameter content: The string to break into sentences.
+    /// - Returns: An array of ``Digester/SentenceChunker/Sentence`` built from `content`.
     private static func sentences(for content: String) -> [Sentence] {
         var results: [Sentence] = []
         
