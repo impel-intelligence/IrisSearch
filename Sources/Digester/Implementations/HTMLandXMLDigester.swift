@@ -71,8 +71,7 @@ final class HTMLandXMLDigester: FileDigester {
         
         // Orphaned items are added into their own block at the top of the document, since they happen before the first Header Tag appears.
         if !orphaned.isEmpty, let rootSelector = try? root.cssSelector() {
-            let firstOrphan = orphaned.removeFirst()
-            let title = (try? document.title()) ?? firstOrphan.text
+            let title = (try? document.title()) ?? orphaned.first?.text ?? "No Header"
             
             let orphanedSection = Section(headerText: title, headerSelector: rootSelector, pieces: orphaned)
             sections.insert(orphanedSection, at: 0)
@@ -98,7 +97,7 @@ final class HTMLandXMLDigester: FileDigester {
                 sequenceIndex += 1
                 currentChunkText = headerPrefix
                 currentChunkSelectors.removeAll()
-                currentChunkHasContent = true
+                currentChunkHasContent = false
             }
             
             for piece in section.pieces {
