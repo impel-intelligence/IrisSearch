@@ -7,7 +7,9 @@
 
 import IrisCommon
 
+/// A chunking strategy for breaking text into sentences
 struct SentenceChunker {
+    /// A sentence with its accompanying range in its parent text.
     struct Sentence {
         let content: String
         let range: Range<Int>
@@ -45,10 +47,13 @@ struct SentenceChunker {
     /// - Parameters:
     ///   - content: The content to chunk.
     ///   - contextSize: The size of content chunks.
-    ///   - prefix: The prefix that will be appended to every chunk of content . `prefix.count` will be removed from `contextSize` to ensure chunks are under `contextSize`.
-    ///   - sequenceOffset: The offset for starting the chunk sequencing. Sequencing informs embeddable content of its position in the document.
-    ///   - anchorMaker: A function that returns a ``IrisCommon/DocumentAnchor``, this should provide an appriate anchor for the integer range of the chunk.
-    /// - Returns: An ``IrisCommon/EmbeddableContent`` for each chunk of the input content.
+    ///   - prefix: The prefix that will be appended to every chunk of content . `prefix.count`
+    ///             will be removed from `contextSize` to ensure chunks are under `contextSize`.
+    ///   - sequenceOffset: The offset for starting the chunk sequencing. Sequencing informs
+    ///                     embeddable content of its position in the document.
+    ///   - anchorMaker: A function that returns a `DocumentAnchor`, this should provide an
+    ///                  appropriate anchor for the integer range of the chunk.
+    /// - Returns: An `EmbeddableContent` for each chunk of the input content.
     public static func chunkContent(for content: String, contextSize: Int, prefix: String = "", sequenceOffset: Int = 0, anchorMaker: (Range<Int>) -> DocumentAnchor) -> [EmbeddableContent] {
         let effectiveContextSize = max(contextSize - prefix.count, 1)
         let overlapCharacters = Int(Double(effectiveContextSize) * 0.05)

@@ -15,10 +15,16 @@ fileprivate final class SectionBuilder {
     private(set) var sections: [HTMLandXMLDigester.Section] = []
     private(set) var orphaned: [HTMLandXMLDigester.ContentPiece] = []
     
+    /// Adds a new section to the sections list.
+    /// - Parameter section: The section to append.
     func addSection(_ section: HTMLandXMLDigester.Section) {
         sections.append(section)
     }
     
+    /// Appends a content piece into either the orphaned list or the most recent section.
+    ///
+    /// A content piece is orphaned if there is no current section for it to be added to.
+    /// - Parameter content: The content to insert into the builder.
     func append(_ content: HTMLandXMLDigester.ContentPiece) {
         if !sections.isEmpty {
             let lastIndex = sections.index(before: sections.endIndex)
@@ -30,7 +36,8 @@ fileprivate final class SectionBuilder {
 }
 
 final class HTMLandXMLDigester: FileDigester {
-    /// A piece of HTML or XML content. Either text or image, with a mandatory selector to reference the Content's place in the document.
+    /// A piece of HTML or XML content. Either text or image, with a mandatory selector to
+    /// reference the Content's place in the document.
     enum ContentPiece {
         case text(text: String, selector: String)
         case image(src: String, alt: String?, selector: String)
@@ -73,11 +80,11 @@ final class HTMLandXMLDigester: FileDigester {
 
     required init() { }
     
-    /// Digest an HTML or XML file, and convert it into ``IrisCommon/EmbeddableContent``.
+    /// Digest an HTML or XML file, and convert it into `EmbeddableContent`.
     /// - Parameters:
     ///   - file: The HTML or XML file to convert.
     ///   - contextSize: The size of embeddable content chunks to return.
-    /// - Returns: An array of ``IrisCommon/EmbeddableContent`` that represents the DOM of the provided document.
+    /// - Returns: An array of `EmbeddableContent` that represents the DOM of the provided document.
     func digest(file: URL, contextSize: Int) async throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
         try HTMLandXMLDigester.validateLocalURL(file)

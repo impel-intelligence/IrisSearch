@@ -7,17 +7,23 @@
 
 import UniformTypeIdentifiers
 
+/// A factory for content digesters that abstracts the creation of digesters.
 public struct DigesterFactory {
+    /// The set of registered ``FileDigester``. For a digester to be recognized by the factory, it must be included in this structure.
     private static let registeredDigesters: [any FileDigester.Type] = [
         TXTDigester.self,
         PDFDigester.self,
         HTMLandXMLDigester.self
     ]
     
+    /// All uniform type identifiers that are supported by registered File Digesters.
     public static var availableUniformTypes: [UTType] {
         return registeredDigesters.flatMap({$0.fileTypes})
     }
     
+    /// Create a an instance of ``FileDigester`` that can properly digest the given `type`
+    /// - Parameter type: The `UTType` to create a digester for.
+    /// - Returns: A ``FileDigester`` that is best fit for the content type.
     public static func digester(for type: UTType) throws -> any FileDigester {
         let validDigesters = registeredDigesters.filter { $0.isValidType(type) }
         guard !validDigesters.isEmpty else { throw DigestionError.noAvailableDigester(type: type) }
@@ -46,16 +52,5 @@ public struct DigesterFactory {
         guard let bestDigester else { throw DigestionError.noAvailableDigester(type: type) }
         
         return bestDigester.init()
-    }
-}
-
-extension Array where Element == UTType {
-    /// Find the type in this array that conforms to every other type in the array. Used to find the bottom of a conformance chain.
-    func mostSpecificType(conformingTo type: UTType) -> UTType? {
-        self.first { a in
-            type.conforms(to: a) && self.allSatisfy { b in
-                !type.conforms(to: b) || a == b || a.conforms(to: b)
-            }
-        }
     }
 }

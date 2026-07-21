@@ -17,35 +17,51 @@ extension CGImage {
     }
 }
 
+///
 enum PDFDigestionError: Error {
     case couldNotCreateDocument
 }
 
+/// A file digester that creates `EmbeddableContent` for every page of a PDF document.
+///
+/// This digester creates image renderings of every PDF page, as well as extracted text for each page.
 final class PDFDigester: FileDigester, Sendable {
+    /// A page rendered into jpg data. Includes an option label, and its original page index.
     struct RenderedPage: Sendable {
+        /// The page number that this page originated from.
         let index: Int
+        /// Core Graphics jpeg data containing the rendered image at source scale.
         let jpgData: Data
+        /// An optional page label, corresponding to `PDFKit`'s `PDFPage.pageLabel`.
         let label: String?
     }
     
-    // A wrapper struct that puts a PDF page into a "sendable" struct so it can pass the task boundary. Unsafe, but we don't need to worry since we never modify the data, just read.
+    /// A wrapper struct that puts a PDF page into a "sendable" struct so it can pass the task boundary.
+    ///  Unsafe, but we don't need to worry since we never modify the data, just read.
     struct SendablePage: @unchecked Sendable {
+        /// The `PDFPage` that this struct is wrapping.
         let page: PDFPage
+        /// An optional page label, corresponding to `PDFKit`'s `PDFPage.pageLabel`.
         let label: String?
+        /// The original page index in the `PDFDocument`.
         let index: Int
     }
 
     static let fileTypes: [UTType] = [.pdf]
     
-    required init() {
-
-    }
+    required init() { }
     
+    /// Digest a PDF document, and convert it into `EmbeddableContent`.
+    /// - Parameters:
+    ///   - file: The PDF document to convert.
+    ///   - contextSize: The size of embeddable content chunks to return.
+    /// - Returns: An array of `EmbeddableContent` that represents the per page text and
+    ///            per page image data of document at `file`.
     func digest(file: URL, contextSize: Int) async throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
         try PDFDigester.validateLocalURL(file)
 
-        guard let data = FileManager.default.contents(atPath: file.path(percentEncoded: false)) else { throw DigestionError.failedToReadContents }
+        guard let data = FileManager.default.contents(atPath: file.path(percentEncoded: false)) else { throw DigestionError.fileNotReadable }
         
         guard let pdfDocument = PDFDocument(data: data) else { throw PDFDigestionError.couldNotCreateDocument }
 
@@ -99,6 +115,11 @@ final class PDFDigester: FileDigester, Sendable {
         return contentPieces
     }
     
+    /// Extracts text from the given PDF pages, using a throwing task group to parallelize work
+    ///
+    /// - Parameter pages: The sendable PDF pages to extract text from.
+    /// - Returns: An array of strings & integers, where the string is all of the text on a page at the
+    ///            corresponding  integer.
     func extractText(from pages: [SendablePage]) async throws -> [(String, Int)] {
         return try await withThrowingTaskGroup(of: (String?, Int).self) { group in
             for wrapper in pages {
