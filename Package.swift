@@ -15,10 +15,6 @@ let package = Package(
         .library(name: "IrisSearch", targets: ["IrisSearch"]),
         .library(name: "Digester", targets: ["Digester"]),
     ],
-    traits: [
-        .trait(name: "html", description: "Enable HTML support"),
-        .default(enabledTraits: ["html"])
-    ],
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.4.1"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
@@ -66,14 +62,15 @@ let package = Package(
             name: "Digester",
             dependencies: [
                 "IrisCommon",
-                .product(name: "SwiftSoup", package: "SwiftSoup", condition: .when(traits: ["html"]))
+                .product(name: "SwiftSoup", package: "SwiftSoup")
             ]
         ),
         .testTarget(
             name: "DigesterTests",
             dependencies: [
                 "Digester",
-                "TestUtilities"
+                "TestUtilities",
+                .product(name: "SwiftSoup", package: "SwiftSoup")
             ],
             resources: [
                 .copy("../Test Documents")
