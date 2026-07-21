@@ -43,11 +43,11 @@ struct HTMLandXMLTests {
         for content in digest {
             guard let header = validHeaders.first else { continue }
             // Every piece should be a text piece in this document
-            try #require(content.textContent != nil, "Every piece should be a text piece in this document")
+            let textContent = try #require(content.textContent, "Every piece should be a text piece in this document")
             
-            #expect(!content.textContent!.isEmpty, "Content should not be empty.")
+            #expect(!textContent.isEmpty, "Content should not be empty.")
             
-            if content.textContent!.contains(header) {
+            if textContent.contains(header) {
                 validHeaders.removeFirst()
             }
         }
