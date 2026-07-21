@@ -10,6 +10,7 @@ import IrisCommon
 import Foundation
 import SwiftSoup
 
+/// A builder that is passed through recursive calls of ``HTMLandXMLDigester/walk(_:builder:)``.
 fileprivate final class SectionBuilder {
     private(set) var sections: [HTMLandXMLDigester.Section] = []
     private(set) var orphaned: [HTMLandXMLDigester.ContentPiece] = []
@@ -29,11 +30,7 @@ fileprivate final class SectionBuilder {
 }
 
 final class HTMLandXMLDigester: FileDigester {
-    struct IndexedElement: Hashable {
-        let index: Int
-        let element: Element
-    }
-    
+    /// A piece of HTML or XML content. Either text or image, with a mandatory selector to reference the Content's place in the document.
     enum ContentPiece {
         case text(text: String, selector: String)
         case image(src: String, alt: String?, selector: String)
@@ -57,6 +54,7 @@ final class HTMLandXMLDigester: FileDigester {
         }
     }
     
+    /// A section of content containing a header and the pieces within.
     struct Section: Sendable {
         let headerText: String
         let headerSelector: String
@@ -75,7 +73,12 @@ final class HTMLandXMLDigester: FileDigester {
 
     required init() { }
     
-    func digest(file: URL, contextSize: Int) throws -> [EmbeddableContent] {
+    /// Digest an HTML or XML file, and convert it into ``IrisCommon/EmbeddableContent``.
+    /// - Parameters:
+    ///   - file: The HTML or XML file to convert.
+    ///   - contextSize: The size of embeddable content chunks to return.
+    /// - Returns: An array of ``IrisCommon/EmbeddableContent`` that represents the DOM of the provided document.
+    func digest(file: URL, contextSize: Int) async throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
         try HTMLandXMLDigester.validateLocalURL(file)
         
@@ -147,9 +150,14 @@ final class HTMLandXMLDigester: FileDigester {
                     currentChunkSelectors.append(selector)
                     currentChunkHasContent = true
                 case .image(let src, let alt, let selector):
-                    // Stop the current text chunk
-                    // TODO: Add support for image loading
-                    break
+                    // Stop the current text chunk because it was interrupted by an image.
+                    finishTextChunk()
+                    
+                    guard let imageData = try? await ImageDecoder().loadImage(src: src, relativeTo: file) else { continue }
+                    
+                    let documentLocation = DocumentLocation(sequenceIndex: sequenceIndex, documentLength: -1, anchor: .selector(selectors: [selector]))
+                    sequenceIndex += 1
+                    chunks.append(.image(content: imageData, caption: alt, location: documentLocation))
                 }
             }
             
@@ -162,12 +170,17 @@ final class HTMLandXMLDigester: FileDigester {
         // Update the document length for all of the chunks.
         for index in chunks.indices {
             chunks[index] = chunks[index].withNewDocumentLength(length: sequenceIndex)
-            print(chunks[index])
         }
         
         return chunks
     }
     
+    /// Walk the DOM and create header based sections.
+    ///
+    /// If content is found outside of a header, it is processed as an Orphan.
+    /// - Parameters:
+    ///   - element: The element to walk the child tree of
+    ///   - builder: A builder reference to create sections in. Provides consistent access to the same sections for recursive walk calls.
     private func walk(_ element: Element, builder: SectionBuilder) throws  {
         // The overall element selector, used for stray nodes.
         let elementSelector = try element.cssSelector()
@@ -206,7 +219,9 @@ final class HTMLandXMLDigester: FileDigester {
             if tag == "img" {
                 let src = try child.attr("src")
                 guard !src.isEmpty else { continue }
-                let alt = try child.attr("alt")
+                let rawAlt = try child.attr("alt")
+                // SwiftSoup never returns nil, it will return an empty string. So convert to an optional by checking if the returned attribute is empty.
+                let alt = rawAlt.isEmpty ? nil : rawAlt
                 
                 let contentPiece = ContentPiece.image(src: src, alt: alt, selector: selector)
                 
@@ -272,11 +287,4 @@ final class HTMLandXMLDigester: FileDigester {
         
         return tableLines.joined(separator: "\n")
     }
-    
-//    private func loadImage(from piece: ContentPiece, relativeTo file: URL) throws -> Data? {
-//        guard case .image(let src, let alt, let selector) = piece else { return nil }
-//
-//        guard let url = URL(string: src, relativeTo: file) else { return nil }
-//        
-//    }
 }

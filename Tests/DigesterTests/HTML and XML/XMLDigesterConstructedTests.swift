@@ -60,7 +60,7 @@ final class XMLDigesterConstructedTests {
     }
 
     @Test("Generic XML with no HTML-like tags still has its text captured")
-    func genericXMLIsCaptured() throws {
+    func genericXMLIsCaptured() async throws {
         // <catalog> has no <body> tag anywhere, so digest() falls back to walking the whole
         // document; none of <catalog>/<item>/<name>/<price> are header/table/img or contain one,
         // so the entire tree is captured as a single leaf via .text().
@@ -75,7 +75,7 @@ final class XMLDigesterConstructedTests {
         }
 
         let fileURL = try write(document)
-        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let digest = try await digestor.digest(file: fileURL, contextSize: 10_000)
         let combined = allText(in: digest)
 
         #expect(combined.contains("Widget"))
@@ -85,7 +85,7 @@ final class XMLDigesterConstructedTests {
     }
 
     @Test("Custom XML using h1/h2-named tags still gets header-based sectioning, proving tag matching is format-agnostic")
-    func headerLikeTagsSectionXMLToo() throws {
+    func headerLikeTagsSectionXMLToo() async throws {
         // No <body> tag exists, so digest() walks <document> itself. <document> isn't a header,
         // but it *contains* <h1>/<h2>, so walk() recurses into it and finds them exactly the way
         // it would find <h1>/<h2> inside an HTML <div> wrapper.
@@ -97,7 +97,7 @@ final class XMLDigesterConstructedTests {
         }
 
         let fileURL = try write(document)
-        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let digest = try await digestor.digest(file: fileURL, contextSize: 10_000)
         let texts = textChunks(in: digest)
 
         let chapterChunk = try #require(texts.first { $0.content.contains("Chapter One") })
@@ -109,7 +109,7 @@ final class XMLDigesterConstructedTests {
     }
 
     @Test("XML content stored in nested element text (plist-style) is captured correctly")
-    func elementTextBasedXMLIsCaptured() throws {
+    func elementTextBasedXMLIsCaptured() async throws {
         // Contrast case for the OPML test below: when an XML format stores its data as nested
         // element *text* (like Apple's XML plist <string>/<integer> elements) rather than in
         // attributes, walk()'s .text()-based leaf capture works exactly as it does for HTML.
@@ -122,7 +122,7 @@ final class XMLDigesterConstructedTests {
         }
 
         let fileURL = try write(document)
-        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let digest = try await digestor.digest(file: fileURL, contextSize: 10_000)
         let combined = allText(in: digest)
 
         #expect(combined.contains("Name"))
@@ -140,7 +140,7 @@ final class XMLDigesterConstructedTests {
     // and falls back to the `text` attribute only when that's empty — which is exactly the case
     // for a self-closed <outline>, so its `text` attribute is what ends up captured.
     @Test("OPML outline entries (text stored in the `text` attribute) are captured")
-    func opmlOutlineTextIsCaptured() throws {
+    func opmlOutlineTextIsCaptured() async throws {
         let document = try makeXMLDocument(root: "opml") { opml in
             try opml.attr("version", "2.0")
 
@@ -159,7 +159,7 @@ final class XMLDigesterConstructedTests {
         }
 
         let fileURL = try write(document)
-        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let digest = try await digestor.digest(file: fileURL, contextSize: 10_000)
         let combined = allText(in: digest)
 
         #expect(combined.contains("Tech News"))
@@ -169,7 +169,7 @@ final class XMLDigesterConstructedTests {
     // walk()'s node-level iteration (walking every child node, not just child Elements) is shared
     // code, not HTML-specific — confirm loose text beside a structural element is captured here too.
     @Test("Loose text directly beside a header-like tag in XML is still captured, not just the tag's own text")
-    func looseTextBesideHeaderLikeTagIsCaptured() throws {
+    func looseTextBesideHeaderLikeTagIsCaptured() async throws {
         let document = try makeXMLDocument(root: "document") { root in
             try root.appendElement("h1").attr("id", "chapter-one").text("Chapter One")
             let wrapper = try root.appendElement("section")
@@ -179,7 +179,7 @@ final class XMLDigesterConstructedTests {
         }
 
         let fileURL = try write(document)
-        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let digest = try await digestor.digest(file: fileURL, contextSize: 10_000)
         let combined = allText(in: digest)
 
         #expect(combined.contains("Chapter One"))
