@@ -10,6 +10,24 @@ import IrisCommon
 import Foundation
 import SwiftSoup
 
+fileprivate final class SectionBuilder {
+    private(set) var sections: [HTMLandXMLDigester.Section] = []
+    private(set) var orphaned: [HTMLandXMLDigester.ContentPiece] = []
+    
+    func addSection(_ section: HTMLandXMLDigester.Section) {
+        sections.append(section)
+    }
+    
+    func append(_ content: HTMLandXMLDigester.ContentPiece) {
+        if !sections.isEmpty {
+            let lastIndex = sections.index(before: sections.endIndex)
+            sections[lastIndex].pieces.append(content)
+        } else {
+            orphaned.append(content)
+        }
+    }
+}
+
 final class HTMLandXMLDigester: FileDigester {
     struct IndexedElement: Hashable {
         let index: Int
@@ -39,7 +57,7 @@ final class HTMLandXMLDigester: FileDigester {
         }
     }
     
-    struct Section {
+    struct Section: Sendable {
         let headerText: String
         let headerSelector: String
         var pieces: [ContentPiece] = []
@@ -67,13 +85,17 @@ final class HTMLandXMLDigester: FileDigester {
         // Start at the document body, if there is non start at the document root.
         let root = document.body() ?? document
         
-        var (sections, orphaned) = try walk(root)
+        let builder: SectionBuilder = SectionBuilder()
+        
+        try walk(root, builder: builder)
+        
+        var sections = builder.sections
         
         // Orphaned items are added into their own block at the top of the document, since they happen before the first Header Tag appears.
-        if !orphaned.isEmpty, let rootSelector = try? root.cssSelector() {
-            let title = (try? document.title()) ?? orphaned.first?.text ?? "No Header"
+        if !builder.orphaned.isEmpty, let rootSelector = try? root.cssSelector() {
+            let title = (try? document.title()) ?? builder.orphaned.first?.text ?? "No Header"
             
-            let orphanedSection = Section(headerText: title, headerSelector: rootSelector, pieces: orphaned)
+            let orphanedSection = Section(headerText: title, headerSelector: rootSelector, pieces: builder.orphaned)
             sections.insert(orphanedSection, at: 0)
         }
         
@@ -146,27 +168,28 @@ final class HTMLandXMLDigester: FileDigester {
         return chunks
     }
     
-    private func walk(_ element: Element) throws -> (sections: [Section], orphaned: [ContentPiece]) {
-        var sections: [Section] = []
-        var orphaned: [ContentPiece] = []
+    private func walk(_ element: Element, builder: SectionBuilder) throws  {
+        // The overall element selector, used for stray nodes.
+        let elementSelector = try element.cssSelector()
         
-        func append(_ content: ContentPiece) {
-            if !sections.isEmpty {
-                let lastIndex = sections.index(before: sections.endIndex)
-                sections[lastIndex].pieces.append(content)
-            } else {
-                orphaned.append(content)
+        for node in element.getChildNodes() {
+            // Collect any loose text that is directly under the `element`
+            if let textNode = node as? TextNode {
+                guard !textNode.isBlank() else { continue }
+                // Use the parent element's selector since nodes have no selector.
+                builder.append(.text(text: textNode.text(), selector: elementSelector))
+                continue
             }
-        }
-        
-        for child in element.children() {
+            
+            // The rest of this function deals with actual structured HTML content, and not loose nodes.
+            guard let child = node as? Element else { continue }
             let tag = child.tagName()
             let selector = try child.cssSelector()
             
             if HTMLandXMLDigester.headerTags.contains(tag) {
                 let headerText = try child.text()
                 guard !headerText.isEmpty else { continue }
-                sections.append(Section(headerText: headerText, headerSelector: selector))
+                builder.addSection(Section(headerText: headerText, headerSelector: selector))
                 continue // Jump Loop
             }
             
@@ -175,7 +198,7 @@ final class HTMLandXMLDigester: FileDigester {
                 let tableText = try renderTable(child)
                 guard !tableText.isEmpty else { continue }
                 
-                append(.text(text: tableText, selector: selector))
+                builder.append(.text(text: tableText, selector: selector))
                 continue // Done!
             }
             
@@ -187,27 +210,24 @@ final class HTMLandXMLDigester: FileDigester {
                 
                 let contentPiece = ContentPiece.image(src: src, alt: alt, selector: selector)
                 
-                append(contentPiece)
+                builder.append(contentPiece)
                 continue // Done!
             }
             
             // If the element is a block, we want to walk its content
             if !(try child.select("table, img, h1, h2, h3, h4, h5, h6").isEmpty()) {
-                let (childSections, childOrphans) = try walk(child)
-                
-                // Combining sections requires us to combine headers that have the same selector. This is purely defensive, as a header with the same selector should never appear as a child of itself.
-                sections = combineSections(sections, rhs: childSections)
-                orphaned.append(contentsOf: childOrphans)
+                // Recurse into the block
+                try walk(child, builder: builder)
                 continue // Done!
             }
             
             // If all else fails, append the text of this element.
-            let text = try child.text()
+            let nestedText = try child.text()
+            // If nested text, check if there is a "text" attribute from OPML.
+            let text = nestedText.isEmpty ? try child.attr("text") : nestedText
             guard !text.isEmpty else { continue }
-            append(.text(text: text, selector: selector))
+            builder.append(.text(text: text, selector: selector))
         }
-        
-        return (sections, orphaned)
     }
     
     /// Parse a SwiftSoup ``Element`` that has been detected as a "table" tag.
@@ -251,20 +271,6 @@ final class HTMLandXMLDigester: FileDigester {
         }
         
         return tableLines.joined(separator: "\n")
-    }
-    
-    private func combineSections(_ lhs: [Section], rhs: [Section]) -> [Section] {
-        var combined = lhs
-
-        for rightSection in rhs {
-            if let index = combined.firstIndex(where: { $0.headerSelector == rightSection.headerSelector }) {
-                combined[index].pieces.append(contentsOf: rightSection.pieces)
-            } else {
-                combined.append(rightSection)
-            }
-        }
-
-        return combined
     }
     
 //    private func loadImage(from piece: ContentPiece, relativeTo file: URL) throws -> Data? {

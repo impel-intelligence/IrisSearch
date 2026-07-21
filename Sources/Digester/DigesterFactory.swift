@@ -8,7 +8,11 @@
 import UniformTypeIdentifiers
 
 public struct DigesterFactory {
-    private static let registeredDigesters: [any FileDigester.Type] = [TXTDigester.self, PDFDigester.self, HTMLandXMLDigester.self]
+    private static let registeredDigesters: [any FileDigester.Type] = [
+        TXTDigester.self,
+        PDFDigester.self,
+        HTMLandXMLDigester.self
+    ]
     
     public static var availableUniformTypes: [UTType] {
         return registeredDigesters.flatMap({$0.fileTypes})

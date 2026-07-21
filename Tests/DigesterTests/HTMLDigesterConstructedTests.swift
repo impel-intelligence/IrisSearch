@@ -1,5 +1,5 @@
 //
-//  HTMLandXMLDigesterConstructedTests.swift
+//  HTMLDigesterConstructedTests.swift
 //  IrisSearch
 //
 //  Authored by Claude Sonnet 5 (Anthropic) on 2026-07-20.
@@ -9,6 +9,9 @@
 //  (appendElement/attr/text), serialized, and written to a per-test temporary directory that is
 //  torn down afterward. This makes it easy to isolate one specific behavior per test (a single
 //  nested header, a single oversized paragraph, etc.) without needing a matching fixture file.
+//
+//  This file covers HTML documents specifically. See XMLDigesterConstructedTests.swift for the
+//  XML/OPML side of HTMLandXMLDigester.
 
 import Testing
 @testable import Digester
@@ -16,12 +19,12 @@ import SwiftSoup
 import IrisCommon
 import Foundation
 
-final class HTMLandXMLDigesterConstructedTests {
+final class HTMLDigesterConstructedTests {
     private let digestor = HTMLandXMLDigester()
     private let workingDirectory: URL
 
     init() {
-        workingDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("HTMLandXMLDigesterConstructedTests-\(UUID().uuidString)", isDirectory: true)
+        workingDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("HTMLDigesterConstructedTests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: workingDirectory, withIntermediateDirectories: true)
     }
 
@@ -171,11 +174,7 @@ final class HTMLandXMLDigesterConstructedTests {
         #expect(texts[1].content.contains("Later content."))
     }
 
-    // BUG: `digest()` calls `orphaned.removeFirst()` unconditionally before checking whether
-    // `document.title()` succeeded, so the first orphaned piece is discarded even when a real
-    // <title> is present to supply the header text — it should still show up as body content.
-    // This test is expected to fail against the current implementation.
-    @Test("The first orphaned piece should still appear as content when a <title> is present")
+    @Test("The first orphaned piece still appears as content when a <title> is present")
     func orphanedContentWithTitleKeepsFirstPiece() throws {
         let document = try makeDocument { body in
             try body.appendElement("p").text("Welcome to the document.")
@@ -240,17 +239,7 @@ final class HTMLandXMLDigesterConstructedTests {
         }
     }
 
-    // BUG: `finishTextChunk()` sets `currentChunkHasContent = true` (should be `false`) after
-    // resetting for the next chunk. That reset-value only gets overwritten correctly when a
-    // *normal* piece is subsequently appended (line ~127 sets it back to true anyway) — but the
-    // oversized-piece branch flushes, splits via SentenceChunker, and `continue`s without ever
-    // touching `currentChunkHasContent` again. If that oversized piece is the last one in the
-    // section, the trailing `if !currentChunkText.isEmpty { finishTextChunk() }` check (which
-    // uses `!currentChunkText.isEmpty` — always true, since it still holds the header prefix —
-    // rather than `currentChunkHasContent`) sees the stale `true` and emits a spurious
-    // header-only chunk with an empty selector list. This test is expected to fail against the
-    // current implementation.
-    @Test("No chunk should have an empty selector list, even when a section ends with an oversized piece")
+    @Test("No chunk has an empty selector list, even when a section ends with an oversized piece")
     func noTrailingEmptyChunkAfterOversizedLastPiece() throws {
         let sentence = "This is one sentence in a very long paragraph that keeps going. "
         let longText = String(repeating: sentence, count: 40)
@@ -292,5 +281,105 @@ final class HTMLandXMLDigesterConstructedTests {
 
         #expect(imageCount == 0, "Image loading is a pending TODO in digest() — update this test once EmbeddableContent.image pieces are emitted")
         #expect(textChunks(in: digest).first?.content.contains("Caption text.") == true, "Non-image content in the same section should still be captured")
+    }
+
+    // The tests below lock in walk()'s node-level iteration (walking every child node, not just
+    // child Elements) and the shared SectionBuilder — regression coverage for the two bugs found
+    // while testing against mixed-content.html (see HTMLandXMLTests.swift's Image Gallery /
+    // Inline and Linked Images tests for the same behavior against real fixture content).
+
+    @Test("Text directly beside an inline image is preserved and stays in document order")
+    func textAroundInlineImageIsPreserved() throws {
+        let document = try makeDocument { body in
+            try body.appendElement("h1").attr("id", "gallery").text("Gallery")
+            let paragraph = try body.appendElement("p")
+            try paragraph.appendText("Before the image.")
+            try paragraph.appendElement("img").attr("src", "icon.png").attr("alt", "an icon")
+            try paragraph.appendText("After the image.")
+        }
+
+        let fileURL = try write(document)
+        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let texts = textChunks(in: digest)
+
+        #expect(texts.count == 1)
+        let content = try #require(texts.first?.content)
+        #expect(content.contains("Before the image."))
+        #expect(content.contains("After the image."))
+
+        let beforeRange = try #require(content.range(of: "Before the image."))
+        let afterRange = try #require(content.range(of: "After the image."))
+        #expect(beforeRange.lowerBound < afterRange.lowerBound, "Text should stay in document order relative to the image it surrounds")
+    }
+
+    @Test("A <figure> wrapping an image and caption is attributed to the currently active section")
+    func figureContentAttributedToActiveSection() throws {
+        let document = try makeDocument { body in
+            try body.appendElement("h1").attr("id", "gallery").text("Gallery")
+            let figure = try body.appendElement("figure")
+            try figure.appendElement("img").attr("src", "photo.png").attr("alt", "a photo")
+            try figure.appendElement("figcaption").text("Figure 1: A nice photo.")
+            try body.appendElement("h1").attr("id", "closing").text("Closing")
+            try body.appendElement("p").text("The end.")
+        }
+
+        let fileURL = try write(document)
+        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let texts = textChunks(in: digest)
+
+        #expect(texts.count == 2, "Exactly two sections should be produced: Gallery and Closing")
+
+        let galleryChunk = try #require(texts.first { $0.content.contains("Gallery") })
+        #expect(galleryChunk.content.contains("Figure 1: A nice photo."), "The figcaption should be attributed to the Gallery section, not dropped or misplaced")
+
+        let closingChunk = try #require(texts.first { $0.content.contains("Closing") })
+        #expect(!closingChunk.content.contains("Figure 1"), "The figure's caption should not leak into a later section")
+    }
+
+    @Test("Loose text with no wrapping tag at all is still captured, not silently dropped")
+    func looseTopLevelTextIsCaptured() throws {
+        let document = try makeDocument { body in
+            try body.appendElement("h1").attr("id", "notes").text("Notes")
+            try body.appendText("A stray sentence with no wrapping tag at all.")
+            try body.appendElement("p").text("A normal wrapped paragraph.")
+        }
+
+        let fileURL = try write(document)
+        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let texts = textChunks(in: digest)
+
+        #expect(texts.count == 1)
+        #expect(texts.first?.content.contains("A stray sentence with no wrapping tag at all.") == true)
+        #expect(texts.first?.content.contains("A normal wrapped paragraph.") == true)
+    }
+
+    @Test("Whitespace-only text between elements does not produce spurious extra pieces")
+    func whitespaceOnlyTextIsIgnored() throws {
+        // Simulates hand-formatted HTML with newlines/indentation between tags — appendText
+        // inserts a literal whitespace-only TextNode as a direct sibling, matching how real files
+        // are authored (see headers.html, which is full of these).
+        let document = try makeDocument { body in
+            try body.appendElement("h1").attr("id", "notes").text("Notes")
+            try body.appendText("\n    ")
+            try body.appendElement("p").text("First paragraph.")
+            try body.appendText("\n    ")
+            try body.appendElement("p").text("Second paragraph.")
+            try body.appendText("\n")
+        }
+
+        let fileURL = try write(document)
+        let digest = try digestor.digest(file: fileURL, contextSize: 10_000)
+        let texts = textChunks(in: digest)
+
+        #expect(texts.count == 1)
+        let chunk = try #require(texts.first)
+        #expect(chunk.content.contains("First paragraph."))
+        #expect(chunk.content.contains("Second paragraph."))
+
+        // Exactly the two real paragraphs should have contributed a selector. If whitespace-only
+        // TextNodes between them weren't filtered via isBlank() (not just .isEmpty on the
+        // normalized text — normalization can collapse "\n    " down to a single space, which is
+        // non-empty), each one would add a spurious extra selector here.
+        #expect(selectors(for: chunk.location).count == 2, "Whitespace-only text nodes should not contribute their own pieces/selectors")
     }
 }
