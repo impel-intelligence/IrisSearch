@@ -214,7 +214,7 @@ extension IrisDB {
     ///   - uuid: The UUID of the document to create.
     ///   - title: The title of the document, used for full text search.
     ///   - description: A description of the document, used for full text search.
-    ///   - embeddableContent: The embeddable content, usually created by a ``Digester``
+    ///   - embeddableContent: The embeddable content, usually created by a `FileDigester`
     /// - Returns: A populated ``IrisDocument``, with an entry in the SQLite database & the FAISS index.
     @discardableResult
     public func createDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws -> IrisDocument {
@@ -265,7 +265,6 @@ extension IrisDB {
         }
         
         return insertedDocument
-
     }
     
     /// Updates a document's entry in the database.
@@ -273,7 +272,7 @@ extension IrisDB {
     ///   - uuid: The UUID of the document to update.
     ///   - title: The new title of the document.
     ///   - description: The new description for the document
-    ///   - embeddableContent: The new embeddable content, usually created by a ``Digester``
+    ///   - embeddableContent: The new embeddable content, usually created by a `FileDigester`
     public func updateDocument(uuid: UUID, title: String, description: String, embeddableContent: [EmbeddableContent]) async throws {
         try await writeExecutor.run(uuid) {
             try await self.performUpdateDocument(uuid: uuid, title: title, description: description, embeddableContent: embeddableContent)

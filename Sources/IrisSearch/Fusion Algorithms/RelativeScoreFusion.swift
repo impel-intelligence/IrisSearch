@@ -10,9 +10,6 @@ public struct RelativeScoreFusion {
         case inputsAndWeightCountMustMatch
     }
     
-    ///
-    /// - Parameter inputs: ID : Relative Score
-    /// - Returns: Input IDs ranked by their relative scores.
     public static func rank(inputs: [[(id: Int, score: Double)]], weights: [Double]) throws -> [Int] {
         guard inputs.count == weights.count else { return [] }
         var scores: [Int: Double] = [:]

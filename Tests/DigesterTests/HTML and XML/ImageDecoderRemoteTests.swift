@@ -44,7 +44,7 @@ struct ImageDecoderRemoteTests {
         do {
             _ = try await ImageDecoder().loadImage(url: url)
             Issue.record("Expected loadImage to throw for a 404 response")
-        } catch let error as ImageDecoder.ImageDownloadError {
+        } catch let error as ImageDecoder.ImageDecodingError {
             guard case .invalidResponseCode(let code) = error else {
                 Issue.record("Expected .invalidResponseCode, got \(error)")
                 return
@@ -62,7 +62,7 @@ struct ImageDecoderRemoteTests {
         do {
             _ = try await ImageDecoder().loadImage(url: url)
             Issue.record("Expected loadImage to throw for a text/html response")
-        } catch let error as ImageDecoder.ImageDownloadError {
+        } catch let error as ImageDecoder.ImageDecodingError {
             guard case .invalidMimeType(let type) = error else {
                 Issue.record("Expected .invalidMimeType, got \(error)")
                 return
@@ -90,7 +90,7 @@ struct ImageDecoderRemoteTests {
         do {
             _ = try await ImageDecoder().loadImage(url: url)
             Issue.record("Expected loadImage to throw for a response with no usable image content")
-        } catch is ImageDecoder.ImageDownloadError {
+        } catch is ImageDecoder.ImageDecodingError {
             // Any ImageDownloadError is acceptable here (likely .noMimeType, since /status/200
             // returns an empty body with no Content-Type header) — the point is that a 200 with
             // no real image content never produces valid Data.
