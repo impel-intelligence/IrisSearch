@@ -22,10 +22,22 @@ struct FactoryTests {
         #expect(type(of: TXTDigester()) == type(of: returnedDigester))
     }
     
+    @Test("Ensure the text digester is retruned by the factory for all of its core types.", arguments: TXTDigester.fileTypes)
+    func testTxtDigesterDefaultTypes(utType: UTType) throws {
+        let returnedDigester = try DigesterFactory.digester(for: utType)
+        #expect(type(of: TXTDigester()) == type(of: returnedDigester))
+    }
+
     @Test("Ensure the pdf digester is returned by the factory is correct for various pdf UTTypes.", arguments: [
         UTType.pdf,
         UTType("com.adobe.pdf")!,
     ]) func testPDFDigesterReturned(utType: UTType) throws {
+        let returnedDigester = try DigesterFactory.digester(for: utType)
+        #expect(type(of: PDFDigester()) == type(of: returnedDigester))
+    }
+    
+    @Test("Ensure the pdf digester is retruned by the factory for all of its core types.", arguments: PDFDigester.fileTypes)
+    func testPDFDigesterDefaultTypes(utType: UTType) throws {
         let returnedDigester = try DigesterFactory.digester(for: utType)
         #expect(type(of: PDFDigester()) == type(of: returnedDigester))
     }
@@ -35,6 +47,19 @@ struct FactoryTests {
         UTType.xml,
     ]) func testHTMLandXMLDigesterReturned(utType: UTType) throws {
         let returnedDigester = try DigesterFactory.digester(for: utType)
+        #expect(type(of: HTMLandXMLDigester()) == type(of: returnedDigester))
+    }
+    
+    @Test("Ensure the html and xml digester is retruned by the factory for all of its core types.", arguments: HTMLandXMLDigester.fileTypes)
+    func testHTMLandXMLDigesterDefaultTypes(utType: UTType) throws {
+        let returnedDigester = try DigesterFactory.digester(for: utType)
+        #expect(type(of: HTMLandXMLDigester()) == type(of: returnedDigester))
+    }
+
+    @Test("Ensure overlapping types pick the right factory")
+    func testHTMLandXMLDigesterReturned() throws {
+        // .html is a descendent of .text. This used to make the DigesterFactory return the TXTDigester, so this tests make sure that no longer happens.
+        let returnedDigester = try DigesterFactory.digester(for: .html)
         #expect(type(of: HTMLandXMLDigester()) == type(of: returnedDigester))
     }
 }
