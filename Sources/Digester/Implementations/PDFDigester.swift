@@ -108,7 +108,8 @@ final class PDFDigester: FileDigester, Sendable {
 
         for (offset, page) in resolvedRenderedPages.enumerated() {
             let location = DocumentLocation(sequenceIndex: offset, documentLength: resolvedRenderedPages.count, anchor: .pdf(page: page.index, characterRange: nil))
-            let embeddable = EmbeddableContent.image(content: page.jpgData, caption: page.label ?? "Page \(page.index) of PDF", location: location)
+            let pageCaption = "Page \(page.label ?? String(page.index)) of PDF"
+            let embeddable = EmbeddableContent.image(content: page.jpgData, caption: pageCaption, location: location)
             contentPieces.append(embeddable)
         }
 
