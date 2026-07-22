@@ -3,6 +3,7 @@
 //  IrisSearch
 //
 //  Authored by Claude Sonnet 5 (Anthropic) on 2026-07-13.
+//  Edited by Claude Opus 4.8 (Anthropic) on 2026-07-22: added coverage for the "Remove Embeddings Column" migration.
 //
 
 import Testing
@@ -198,5 +199,74 @@ class IrisDB_DatabaseUpgradeTests {
 
         let document = try await database.readDocument(uuid: legacyUUID)
         #expect(document?.pieces.first?.text == legacyContent, "Data should survive re-opening an already-upgraded database.")
+    }
+
+    /// The legacy 1.0.2 schema stored a per-piece `embeddings` blob in `document_pieces`. That vector data now
+    /// lives exclusively in the FAISS index, so the "Remove Embeddings Column" migration should drop the column
+    /// when an old database is opened, without disturbing the pieces themselves.
+    @Test func upgradingLegacyDatabaseDropsEmbeddingsColumn() async throws {
+        let directories = TestingDirectories()
+
+        let legacyContent = "Legacy content whose embeddings column should be dropped on upgrade."
+        let legacyUUID = try seedLegacyDatabase(
+            at: directories,
+            title: "Legacy Document",
+            description: "Created under the pre-2.0 schema",
+            content: legacyContent,
+            embeddings: [0.1, 0.2, 0.3, 0.4]
+        )
+
+        // Sanity check: the pinned 1.0.2 schema really does start with an embeddings column.
+        let preUpgradeColumns = try await DatabaseQueue(path: directories.sqliteURL.path()).read { db in
+            try db.columns(in: "document_pieces").map(\.name)
+        }
+        #expect(preUpgradeColumns.contains("embeddings"), "The seeded legacy schema should start with an embeddings column.")
+
+        // Opening with the current IrisDB should run "Remove Embeddings Column" on top of the legacy schema.
+        let embedder = try NLEmbedder(language: .english)
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+
+        // Use a fresh connection so we don't read a stale cached schema from before the migration ran.
+        let postUpgradeColumns = try await DatabaseQueue(path: directories.sqliteURL.path()).read { db in
+            try db.columns(in: "document_pieces").map(\.name)
+        }
+        #expect(!postUpgradeColumns.contains("embeddings"), "The embeddings column should be dropped after upgrading.")
+
+        // Dropping the column must not delete or corrupt the existing pieces.
+        let upgradedDocument = try await database.readDocument(uuid: legacyUUID)
+        #expect(upgradedDocument?.pieces.count == 1, "Dropping the embeddings column should not delete existing pieces.")
+        #expect(upgradedDocument?.pieces.first?.text == legacyContent, "Legacy content should survive the column drop.")
+    }
+
+    /// Under the 1.0.2 schema `embeddings` was `NOT NULL`, and the current `DocumentPiece` no longer writes it.
+    /// Without the "Remove Embeddings Column" migration, inserting a new piece into an upgraded legacy database
+    /// would violate that constraint. This verifies a create succeeds after the upgrade.
+    @Test func insertingIntoUpgradedLegacyDatabaseNoLongerRequiresEmbeddings() async throws {
+        let directories = TestingDirectories()
+
+        try seedLegacyDatabase(
+            at: directories,
+            title: "Legacy Document",
+            description: "Created under the pre-2.0 schema",
+            content: "Legacy content.",
+            embeddings: [0.7, 0.8]
+        )
+
+        let embedder = try NLEmbedder(language: .english)
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+
+        let newContent = "Content inserted after the embeddings column was dropped."
+        let newUUID = UUID()
+        let newLocation = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<newContent.count))
+
+        // This call would throw a NOT NULL constraint failure if the embeddings column had not been dropped.
+        try await database.createDocument(
+            uuid: newUUID, title: "New Document", description: "desc",
+            embeddableContent: [.text(content: newContent, location: newLocation)]
+        )
+
+        let newDocument = try await database.readDocument(uuid: newUUID)
+        #expect(newDocument?.pieces.count == 1, "A new document should be insertable into an upgraded legacy database.")
+        #expect(newDocument?.pieces.first?.text == newContent, "The newly inserted piece should round-trip its content.")
     }
 }

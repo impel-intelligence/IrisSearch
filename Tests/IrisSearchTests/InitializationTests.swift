@@ -75,15 +75,14 @@ class IrisDB_InitializationTests {
         let description = "Test description"
         let location = DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<content.count))
 
-        try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
-        
-        let dbQueue = try DatabaseQueue(path: directories.sqliteURL.path())
-        let pieces = try await dbQueue.read { db in
-            return try DocumentPiece.fetchAll(db)
-        }
-        
-        #expect(!pieces.isEmpty, "The document's pieces should be persisted.")
-        for piece in pieces {
+        // Embeddings are no longer persisted to SQLite (they live only in the FAISS index), so pieces
+        // reloaded from the database carry empty `embeddings`. Validate the vectors on the freshly created
+        // document returned by `createDocument`, whose in-memory pieces still carry the vectors handed to FAISS.
+        // Edited by Claude Opus 4.8 (Anthropic) on 2026-07-22
+        let document = try await database.createDocument(uuid: uuid, title: title, description: description, embeddableContent: [.text(content: content, location: location)])
+
+        #expect(!document.pieces.isEmpty, "The document's pieces should be created.")
+        for piece in document.pieces {
             #expect(piece.embeddings.count == embedder.dimension, "Each piece's vector should match the embedding provider dimension.")
         }
     }
