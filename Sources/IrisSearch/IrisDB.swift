@@ -139,7 +139,10 @@ extension IrisDB {
         return try await dbPool.read { db in
             // The range of pieces that we want to grab
             let sequenceRange = (pieceSequenceIndex - before)..<(pieceSequenceIndex + after)
-            guard var document = try IrisDocument.fetchOne(db, key: ["title": documentTitle]) else { return [] }
+            guard var document = try IrisDocument.fetchOne(db, key: ["title": documentTitle]) else {
+                Log.logger.warning("Could not find a document with title \(documentTitle)")
+                return []
+            }
             
             document.pieces = try document.request(for: IrisDocument.pieces)
                 .filter({ sequenceRange.contains($0.sequenceIndex) })
@@ -151,7 +154,10 @@ extension IrisDB {
     
     public func readDocument(title: String, pieceSequenceRange: Range<Int>) async throws -> IrisDocument? {
         return try await dbPool.read { db in
-            guard var document = try IrisDocument.fetchOne(db, key: ["title": title]) else { return nil }
+            guard var document = try IrisDocument.fetchOne(db, key: ["title": title]) else {
+                Log.logger.warning("Could not find a document with title \(title)")
+                return nil
+            }
             document.pieces = try document.request(for: IrisDocument.pieces)
                 .filter({ pieceSequenceRange.contains($0.sequenceIndex) })
                 .fetchAll(db)
@@ -161,7 +167,10 @@ extension IrisDB {
 
     public func readDocument(title: String) async throws -> IrisDocument? {
         return try await dbPool.read { db in
-            guard var document = try IrisDocument.fetchOne(db, key: ["title": title]) else { return nil }
+            guard var document = try IrisDocument.fetchOne(db, key: ["title": title]) else {
+                Log.logger.warning("Could not find a document with title \(title)")
+                return nil
+            }
             document.pieces = try document.request(for: IrisDocument.pieces).fetchAll(db)
             return document
         }
@@ -169,7 +178,10 @@ extension IrisDB {
 
     public func readDocument(uuid: UUID) async throws -> IrisDocument? {
         return try await dbPool.read { db in
-            guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
+            guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else {
+                Log.logger.warning("Could not find a document", metadata: ["uuid": "\(uuid.uuidString)"])
+                return nil
+            }
             document.pieces = try document.request(for: IrisDocument.pieces).fetchAll(db)
             return document
         }
@@ -196,6 +208,8 @@ extension IrisDB {
         case .text(let content, _):
             return try await textEmbedder.embed(content: content).map({Float($0)})
         case .image(_, _, _):
+            // TODO: Image Embedding
+            Log.logger.info("Not embedding image since it is not yet supported")
             return []
         }
     }
@@ -266,6 +280,7 @@ extension IrisDB {
                 try insertedDocument.delete(db)
             }
             
+            Log.logger.error("Failed to create document \(uuid): \(title)", metadata: ["error": "\(error)"])
             // Then re-throw the error.
             throw error
         }
@@ -391,6 +406,7 @@ extension IrisDB {
         // Document Piece Database Search
         let syntacticTextDocumentPieces: [SearchableDocumentPiece] = (try await dbPool.read { db in
             guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
+                Log.logger.warning("Could not create an FTS5 Pattern for \(unicodeNormalizedQuery)")
                 return []
             }
             
@@ -473,6 +489,7 @@ extension IrisDB {
         // Document Piece Database Search
         let syntacticTextDocumentPieces: [SearchableDocumentPiece] = (try await dbPool.read { db in
             guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
+                Log.logger.warning("Could not create an FTS5 Pattern for \(unicodeNormalizedQuery)")
                 return []
             }
             
@@ -490,6 +507,7 @@ extension IrisDB {
         // Search documents by their title and description.
         let syntacticTextDocuments: [SearchableDocument] = (try await dbPool.read { db in
             guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
+                Log.logger.warning("Could not create an FTS5 Pattern for \(unicodeNormalizedQuery)")
                 return []
             }
             
@@ -530,7 +548,10 @@ extension IrisDB {
         var semanticDocumentsWithBestScore: [Int: Double] = [:]
         
         for piece in semanticTextPieces {
-            guard let parentID = pieceParentDocuments[piece.id] else { continue }
+            guard let parentID = pieceParentDocuments[piece.id] else {
+                Log.logger.warning("\(piece.id) does not exist in the parent documents dictionary.")
+                continue
+            }
             let currentDistance = semanticDocumentsWithBestScore[parentID, default: -.greatestFiniteMagnitude]
             semanticDocumentsWithBestScore[parentID] = max(currentDistance, Double(piece.distance))
         }

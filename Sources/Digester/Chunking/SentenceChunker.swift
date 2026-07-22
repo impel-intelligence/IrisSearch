@@ -98,6 +98,7 @@ struct SentenceChunker {
         return goodChunks.enumerated().compactMap { offset, chunk in
             guard let first = chunk.first, let last = chunk.last else { return nil }
             
+            // Find the whitespace in the chunk content
             let joinedContent = chunk.map(\.content).joined()
             let leadingWhitespaceCount = joinedContent.prefix(while: \.isWhitespace).count
             let trailingWhitespaceCount = joinedContent.reversed().prefix(while: \.isWhitespace).count

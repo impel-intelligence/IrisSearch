@@ -122,7 +122,10 @@ final class HTMLandXMLDigester: FileDigester {
             
             func finishTextChunk() {
                 // Make sure we have added content to the chunk. We can't just do a simple text is empty since the header is always present in the chunk text.
-                guard currentChunkHasContent else { return }
+                guard currentChunkHasContent else {
+                    Log.logger.warning("Finished chunk called without any chunk content.")
+                    return
+                }
                 let documentLocation = DocumentLocation(sequenceIndex: sequenceIndex, documentLength: -1, anchor: .selector(selectors: currentChunkSelectors))
                 chunks.append(.text(content: currentChunkText, location: documentLocation))
                 
@@ -160,11 +163,15 @@ final class HTMLandXMLDigester: FileDigester {
                     // Stop the current text chunk because it was interrupted by an image.
                     finishTextChunk()
                     
-                    guard let imageData = try? await ImageDecoder().loadImage(src: src, relativeTo: file) else { continue }
-                    
-                    let documentLocation = DocumentLocation(sequenceIndex: sequenceIndex, documentLength: -1, anchor: .selector(selectors: [selector]))
-                    sequenceIndex += 1
-                    chunks.append(.image(content: imageData, caption: alt, location: documentLocation))
+                    do {
+                        let imageData = try await ImageDecoder().loadImage(src: src, relativeTo: file)
+                        let documentLocation = DocumentLocation(sequenceIndex: sequenceIndex, documentLength: -1, anchor: .selector(selectors: [selector]))
+                        sequenceIndex += 1
+                        chunks.append(.image(content: imageData, caption: alt, location: documentLocation))
+                    } catch {
+                        Log.logger.error("Failed to decode image \(src)", error: error)
+                        continue
+                    }
                 }
             }
             
@@ -216,7 +223,10 @@ final class HTMLandXMLDigester: FileDigester {
             // Load a table
             if tag == "table" {
                 let tableText = try renderTable(child)
-                guard !tableText.isEmpty else { continue }
+                guard !tableText.isEmpty else {
+                    Log.logger.warning("Table text returned as empty")
+                    continue
+                }
                 
                 builder.append(.text(text: tableText, selector: selector))
                 continue // Done!
@@ -225,7 +235,10 @@ final class HTMLandXMLDigester: FileDigester {
             // Parse an image, do not load it though.
             if tag == "img" {
                 let src = try child.attr("src")
-                guard !src.isEmpty else { continue }
+                guard !src.isEmpty else {
+                    Log.logger.warning("Table text returned as empty")
+                    continue
+                }
                 let rawAlt = try child.attr("alt")
                 // SwiftSoup never returns nil, it will return an empty string. So convert to an optional by checking if the returned attribute is empty.
                 let alt = rawAlt.isEmpty ? nil : rawAlt
