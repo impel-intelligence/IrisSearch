@@ -85,7 +85,7 @@ public actor IrisDB {
                 table.column("contentType", .integer).notNull()
                 table.column("textContent", .text)
                 table.column("dataContent", .blob)
-                table.column("embeddings", .blob).notNull()
+                table.column("embeddings", .blob).notNull() // Removed in a later migration
                 
                 table.column("parentID", .integer).notNull()
                 table.foreignKey(["parentID"], references: "documents", onDelete: .cascade)
@@ -106,6 +106,12 @@ public actor IrisDB {
                 table.add(column: "sequenceIndex", .integer)
                 table.add(column: "documentLength", .integer)
                 table.add(column: "documentAnchor", .blob)
+            }
+        }
+        
+        migrator.registerMigration("Remove Embeddings Column") { db in
+            try db.alter(table: DocumentPiece.databaseTableName) { table in
+                table.drop(column: "embeddings")
             }
         }
         

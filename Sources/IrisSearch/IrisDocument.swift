@@ -77,7 +77,6 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
         static let contentType = Column("contentType")
         static let textContent = Column("textContent")
         static let dataContent = Column("dataContent")
-        static let embeddings = Column("embeddings")
         static let parentID = Column("parentID")
         
         static let sequenceIndex = Column("sequenceIndex")
@@ -101,6 +100,7 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
     /// The content that this piece contains. Will be split into the columns `textContent` and `dataContent` when saved into the SQL database.
     public let content: EmbeddableContent
     /// The semantic embedding for the `EmbeddableContent`.
+    /// This value is NOT saved into SQLITE, embeddings are handled by a ``FaissIndex``.
     public let embeddings: [Float]
     /// The ID of the parent ``IrisDocument`` that this piece belongs to.
     public var parentID: Int64?
@@ -141,11 +141,7 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
             throw PieceLoadingError.noValidContent
         }
         
-        let embeddingsData: Data = row[Columns.embeddings]
-        
-        embeddings = embeddingsData.withUnsafeBytes { ptr in
-            return Array(ptr.bindMemory(to: Float.self))
-        }
+        embeddings = []
         
         parentID = row[Columns.parentID]
     }
@@ -172,9 +168,7 @@ public struct DocumentPiece: Identifiable, Sendable, FetchableRecord, MutablePer
             container[Columns.documentLength] = location.documentLength
             container[Columns.anchor] = location.anchor
         }
-        
-        let embeddingData: Data = embeddings.withUnsafeBytes({ Data($0) })
-        container[Columns.embeddings] = embeddingData
+
         container[Columns.parentID] = parentID
     }
     
