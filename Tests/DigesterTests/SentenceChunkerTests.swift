@@ -51,6 +51,18 @@ struct SentenceChunkerTests {
         #expect(recombined.contains("ZQX789"), "The final sentence of the document should not be dropped")
     }
 
+    @Test("Make sure that whitespace at the end of chunks is cleaned.")
+    func testWhitespaceIsTrimmed() {
+        let sentence = "The quick brown fox jumps over the lazy dog."
+        let wrappedSentence = sentence.surrounded(by: "\n\n\n")
+
+        let chunks = chunk(wrappedSentence, contextSize: 50)
+        let recombined = chunks.compactMap(\.textContent).joined()
+
+        #expect(!recombined.contains("\n"))
+        #expect(recombined.contains(sentence))
+    }
+
     // MARK: - Location tracking
 
     @Test("Each chunk's character range reconstructs the exact source text at that range")

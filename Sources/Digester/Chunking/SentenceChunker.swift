@@ -18,6 +18,8 @@ struct SentenceChunker {
     /// Breaks `content` into sentences with corresponding ranges in the overall `content`
     /// - Parameter content: The string to break into sentences.
     /// - Returns: An array of ``Digester/SentenceChunker/Sentence`` built from `content`.
+    ///            Chunks are trimmed of any leading and trailing whitespace. Chunks that are entirely
+    ///            whitespace are dropped.
     private static func sentences(for content: String) -> [Sentence] {
         var results: [Sentence] = []
         
@@ -95,8 +97,23 @@ struct SentenceChunker {
         // Convert sentence chunks into embeddable content and return it
         return goodChunks.enumerated().compactMap { offset, chunk in
             guard let first = chunk.first, let last = chunk.last else { return nil }
-            let chunkContent = prefix + chunk.map(\.content).joined()
-            let chunkRange = first.range.lowerBound..<last.range.upperBound
+            
+            let joinedContent = chunk.map(\.content).joined()
+            let leadingWhitespaceCount = joinedContent.prefix(while: \.isWhitespace).count
+            let trailingWhitespaceCount = joinedContent.reversed().prefix(while: \.isWhitespace).count
+            let trimmedContent = String(joinedContent.dropFirst(leadingWhitespaceCount).dropLast(trailingWhitespaceCount))
+            
+            // If the text was just whitespace, drop it
+            guard !trimmedContent.isEmpty else { return nil }
+            
+            let chunkContent = prefix + trimmedContent
+            let lowerBound = (first.range.lowerBound + leadingWhitespaceCount)
+            let upperBound = (last.range.upperBound - trailingWhitespaceCount)
+            
+            // Bounds have to be separated by at least one character.
+            guard lowerBound < upperBound else { return nil }
+            
+            let chunkRange = lowerBound..<upperBound
             let anchor = anchorMaker(chunkRange)
             let location = DocumentLocation(sequenceIndex: sequenceOffset + offset, documentLength: goodChunks.count, anchor: anchor)
             return EmbeddableContent.text(content: chunkContent, location: location)
