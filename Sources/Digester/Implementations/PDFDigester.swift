@@ -66,7 +66,10 @@ final class PDFDigester: FileDigester, Sendable {
         guard let pdfDocument = PDFDocument(data: data) else { throw PDFDigestionError.couldNotCreateDocument }
 
         let pages: [SendablePage] = (0..<pdfDocument.pageCount).compactMap { index in
-            guard let page = pdfDocument.page(at: index) else { return nil }
+            guard let page = pdfDocument.page(at: index) else {
+                Log.logger.warning("Could not get PDF page at \(index)")
+                return nil
+            }
             return SendablePage(page: page, label: page.label, index: index)
         }
         

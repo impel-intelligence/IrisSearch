@@ -11,13 +11,12 @@ import Testing
 import Foundation
 
 struct TXTTests {
-    @Test("Ensure txt digester reproduces the full content of a file that fits within a single chunk", arguments: [
-        Bundle.module.url(forResource: "Sonnet-149", withExtension: "txt", subdirectory: "Test Documents/Sonnets")!
-    ]) func testTXTDigesterSmallFile(txtFile: URL) throws {
+    @Test("Ensure txt digester reproduces the full content of a file that fits within a single chunk") func testTXTDigesterSmallFile() throws {
+        let txtFile = Bundle.module.url(forResource: "Sonnet-149", withExtension: "txt", subdirectory: "Test Documents/Sonnets")!
         let digestor = TXTDigester()
         let digest = try digestor.digest(file: txtFile, contextSize: 10000)
         
-        let expectedContent = try String(contentsOf: txtFile, encoding: .utf8)
+        let expectedContent = try String(contentsOf: txtFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
         
         // A file smaller than contextSize should still be returned as one whole-document chunk.
         #expect(digest.count == 1, "A file smaller than contextSize should produce exactly one chunk")
@@ -33,7 +32,8 @@ struct TXTTests {
             #expect(Bool(false), "Digest location should anchor to a text character range")
             return
         }
-        #expect(characterRange == 0..<expectedContent.count, "The chunk's range should span the entire document")
+        // Sonnet-149 contains a newline at space 1. The character range should properly move the range forward by 1.
+        #expect(characterRange == 1..<(expectedContent.count + 1), "The chunk's range should span the entire document")
     }
     
     @Test("Ensure txt digester splits large files into multiple sequential, non-empty chunks", arguments: [

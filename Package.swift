@@ -18,7 +18,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.4.1"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
-        .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6")
+        .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6"),
+        .package(url: "https://github.com/apple/swift-log", from: "1.6.0")
     ],
     targets: [
         // Common
@@ -43,7 +44,8 @@ let package = Package(
             dependencies: [
                 "IrisCommon",
                 "SwiftFaiss",
-                .product(name: "GRDB", package: "GRDB.swift")
+                .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "Logging", package: "swift-log")
             ]
         ),
         .testTarget(
@@ -62,7 +64,8 @@ let package = Package(
             name: "Digester",
             dependencies: [
                 "IrisCommon",
-                .product(name: "SwiftSoup", package: "SwiftSoup")
+                .product(name: "SwiftSoup", package: "SwiftSoup"),
+                .product(name: "Logging", package: "swift-log")
             ]
         ),
         .testTarget(

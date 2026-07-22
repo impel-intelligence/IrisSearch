@@ -14,6 +14,9 @@ Iris Search is a hybrid RAG system, that allows you to intake any form of conten
 - XML
 - OPML
 
+### Supported Languages
+- English
+
 ## Installation
 ### Swift Package Manage
 Add this package to your `Package.swift`:

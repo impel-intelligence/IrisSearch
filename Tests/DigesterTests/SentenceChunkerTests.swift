@@ -61,6 +61,13 @@ struct SentenceChunkerTests {
 
         #expect(!recombined.contains("\n"))
         #expect(recombined.contains(sentence))
+        
+        guard case let .text(characterRange) = chunks.first?.location.anchor else {
+            #expect(Bool(false), "Digest location should anchor to a text character range")
+            return
+        }
+
+        #expect(characterRange == 3..<wrappedSentence.count - 3, "The chunks range should doge whitespace")
     }
 
     // MARK: - Location tracking
