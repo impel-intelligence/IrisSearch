@@ -8,6 +8,7 @@
 import Foundation
 import SwiftFaiss
 import SwiftFaissC
+import IrisCommon
 
 final class FaissIndex {
     private static let indexExtension = "index"
