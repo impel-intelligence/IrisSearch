@@ -19,7 +19,8 @@ let package = Package(
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.4.1"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6"),
-        .package(url: "https://github.com/apple/swift-log", from: "1.6.0")
+        .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
+//        .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.1.0")
     ],
     targets: [
         // Common
@@ -91,6 +92,24 @@ let package = Package(
             resources: [
                 .copy("../Test Documents")
             ]
-       )
+       ),
+        
+        // Embeddings
+        .target(
+            name: "Embedders",
+            dependencies: [
+                "IrisCommon",
+//                .product(name: "Embeddings", package: "swift-embeddings")
+            ]
+        ),
+        
+        .testTarget(
+            name: "EmbeddersTests",
+            dependencies: [
+                "Embedders",
+//                .product(name: "Embeddings", package: "swift-embeddings")
+            ]
+        )
+
     ]
 )
