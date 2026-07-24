@@ -12,9 +12,6 @@ import IrisCommon
 
 @Suite("CoreML Embedder Tests")
 struct CoreMLRunnerTests {
-    // BGE-small-en-v1.5's actual CLS-pooled embedding size. This is an independent
-    // ground truth, not read from config.json -- see `configuredDimensionMatchesRealOutput`,
-    // which specifically checks whether config.json's `dimensions` field agrees with it.
     static let expectedDimension = 384
 
     private func makeEmbedder() throws -> CoreMLEmbedder {
@@ -27,7 +24,7 @@ struct CoreMLRunnerTests {
         _ = try makeEmbedder()
     }
 
-    @Test("embed(content:) returns BGE-small's actual 384-dim output")
+    @Test("embed(content:) returns BGE-small's 384-dim output")
     func embeddingHasExpectedDimension() throws {
         let embedder = try makeEmbedder()
         let embedding = try embedder.embed(content: "Hello world!")
