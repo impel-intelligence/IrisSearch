@@ -13,6 +13,9 @@ import IrisCommon
 @Suite("CoreML Runner Tests")
 struct CoreMLRunnerTests {
     @Test func testModelLoading() async throws {
-        try WordPieceTokenizer(vocabURL: URL(filePath: "/Users/taylorlineman/Developer/impel/Minna/Packages/IrisSearch/Sources/Embedders/BGE/vocab.txt")!)
+        let modelURL = Bundle.module.url(forResource: "bge", withExtension: nil, subdirectory: "ml")!
+        let embedder = try CoreMLEmbedder(modelDirectory: modelURL)
+        let embedding = try embedder.embed(content: "Hello World!")
+        print(embedding)
     }
 }
