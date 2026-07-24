@@ -81,7 +81,7 @@ public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
     public func embed(content: String) throws -> [Double] {
         // Since Model can not be used by multiple threads at once, use a lock to wait for the w
         return try model.withLock { model in
-            let tokens = tokenizer.encode(content)
+            let tokens = tokenizer.encode(content, maxLength: self.dimension)
             
             let shape: [Int] = [1, tokens.inputIDs.count]
 
