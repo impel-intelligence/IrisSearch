@@ -191,11 +191,23 @@ extension IrisDB {
         return try await dbPool.read { db in
             let keys = uuids.map({ ["uuid": $0] })
             var documents = try IrisDocument.fetchAll(db, keys: keys)
-            
+
             for index in 0..<documents.count {
                 documents[index].pieces = try documents[index].request(for: IrisDocument.pieces).fetchAll(db)
             }
             
+            return documents
+        }
+    }
+    
+    public func readAllDocuments() async throws -> [IrisDocument] {
+        return try await dbPool.read { db in
+            var documents = try IrisDocument.fetchAll(db)
+            
+            for index in 0..<documents.count {
+                documents[index].pieces = try documents[index].request(for: IrisDocument.pieces).fetchAll(db)
+            }
+
             return documents
         }
     }
@@ -263,7 +275,7 @@ extension IrisDB {
             try document.insert(db)
             
             // Insert document places directly from the document's mutable piece array
-            for index in 0..<document.pieces.count {
+            for index in document.pieces.indices {
                 document.pieces[index].parentID = document.id
                 try document.pieces[index].insert(db)
             }
@@ -344,7 +356,6 @@ extension IrisDB {
         try textIndex.addDocument(document: updatedDocument)
     }
     
-    
     /// Delete a document by `uuid`.
     /// - Parameter uuid: The UUID of the document to delete from the database.
     public func deleteDocument(uuid: UUID) async throws {
@@ -376,14 +387,35 @@ extension IrisDB {
     }
 }
 
-public struct SearchResult: Sendable {
-    public let document: IrisDocument
-    public let importantPieces: [DocumentPiece]
+// MARK: Re-embedding Database
+extension IrisDB {
+    public func reEmbedEntireDatabase() async throws {
+        let documents = try await dbPool.read { db in
+            // Get all documents
+            var documents = try IrisDocument.fetchAll(db)
+            
+            for index in documents.indices {
+                documents[index].pieces = try documents[index].request(for: IrisDocument.pieces).fetchAll(db)
+            }
+            
+            return documents
+        }
+        
+        // Go through all documents and run the update function with the same embeddable content. This will trigger re-embeds for everything.
+        for document in documents {
+            try await updateDocument(
+                uuid: document.uuid,
+                title: document.title,
+                description: document.description,
+                embeddableContent: document.pieces.map(\.content)
+            )
+        }
+    }
 }
 
 // MARK: Search
 extension IrisDB {
-    public func search(within uuid: UUID, query: IrisQuery, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> SearchResult {
+    public func search(within uuid: UUID, query: IrisQuery, semanticCutoff: Float = 0.6, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> SearchResult {
         let document = try await readDocument(uuid: uuid)
         guard let document else { throw IrisDBError.noDocuments }
                 
@@ -395,7 +427,7 @@ extension IrisDB {
         // Text index searching
         let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
         
-        let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit, collection: uuid)
+        let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit, collection: uuid).filter { $0.distance > semanticCutoff }
         
         let semanticDocumentPieces = try await dbPool.read { db in
             return try DocumentPiece
@@ -479,7 +511,7 @@ extension IrisDB {
         )
     }
     
-    public func search(query: IrisQuery, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> [SearchResult] {
+    public func search(query: IrisQuery, nItems: Int = 10, semanticCutoff: Float = 0.6, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> [SearchResult] {
         let maximumPieces = try await dbPool.read { db in
             return try DocumentPiece.fetchCount(db)
         }
@@ -495,7 +527,7 @@ extension IrisDB {
         // Text index searching
         let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
         
-        let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit)
+        let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit).filter { $0.distance > semanticCutoff }
        
         let semanticDocumentPieces = try await dbPool.read { db in
             return try DocumentPiece
