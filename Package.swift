@@ -108,7 +108,11 @@ let package = Package(
             dependencies: [
                 "Embedders",
 //                .product(name: "Embeddings", package: "swift-embeddings")
+            ],
+            resources: [
+                .copy("../Test Documents/ml"),
             ]
+
         )
 
     ]
