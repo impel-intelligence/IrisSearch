@@ -41,6 +41,9 @@ swift test
 swift test --skip network
 ```
 
+### Without any files from git LFS
+swift test --skip lfs
+
 ## Embedding Models
 Some default embeddings are provided in the regular `IrisSearch` package. More are provided in the `Embedders` package, which links to [swift-embeddings](https://github.com/jkrukowski/swift-embeddings/tree/main).
 

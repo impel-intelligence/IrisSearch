@@ -13,6 +13,7 @@ import SwiftFaiss
 import SwiftFaissC
 import GRDB
 import TestUtilities
+import AppleIntelligenceEmbedder
 
 class IrisDB_UpdatingTests {
     @Test func updatingDocumentChangesContentAndPreservesID() async throws {

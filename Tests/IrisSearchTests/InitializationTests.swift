@@ -13,6 +13,7 @@ import SwiftFaiss
 import SwiftFaissC
 import GRDB
 import TestUtilities
+import AppleIntelligenceEmbedder
 
 // MARK: Initialization
 class IrisDB_InitializationTests {

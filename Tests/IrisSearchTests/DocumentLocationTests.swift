@@ -11,6 +11,7 @@ import IrisCommon
 import Foundation
 import GRDB
 import TestUtilities
+import AppleIntelligenceEmbedder
 
 class IrisDB_DocumentLocationTests {
 
