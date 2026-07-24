@@ -12,6 +12,7 @@ import IrisCommon
 import Foundation
 import GRDB
 import TestUtilities
+import AppleIntelligenceEmbedder
 
 /// Validates that a real on-disk database created under IrisSearch 1.0.2 (before `DocumentPiece` had any
 /// location columns) upgrades cleanly when opened by the current `IrisDB`, which adds the "Add Document

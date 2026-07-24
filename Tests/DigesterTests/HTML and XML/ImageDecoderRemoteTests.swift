@@ -22,10 +22,7 @@
 import Testing
 @testable import Digester
 import Foundation
-
-extension Testing.Tag {
-    @Tag static var network: Self
-}
+import TestUtilities
 
 @Suite("ImageDecoder against the real network", .tags(.network))
 struct ImageDecoderRemoteTests {

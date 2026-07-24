@@ -7,10 +7,11 @@
 
 import Foundation
 import Testing
-@testable import Embedders
+@testable import CoreMLEmbedder
 import IrisCommon
+import TestUtilities
 
-@Suite("CoreML Embedder Tests")
+@Suite("CoreML Embedder Tests", .tags(.lfs))
 struct CoreMLRunnerTests {
     static let expectedDimension = 384
 
