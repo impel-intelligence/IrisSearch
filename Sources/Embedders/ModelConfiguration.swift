@@ -9,6 +9,7 @@ import Foundation
 
 struct ModelConfiguration: Codable, Sendable {
     let tokenizerClass: String
+    let dimensions: Int
     
     let maximumInputCharactersPerWord: Int
     let cleanText: Bool

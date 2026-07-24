@@ -24,19 +24,20 @@ public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
     let tokenizer: BERTWordPieceTokenizer
     let configuration: ModelConfiguration
     
-    public let dimension: Int = 512
+    public let dimension: Int
 
     public init(modelDirectory: URL) throws {
         // Make sure we can find the .mlmodelc and the vocab.txt files we need.
         let (modelURL, vocabURL, configURL) = try CoreMLEmbedder.validateDirectory(modelDirectory)
         
-        var modelConfiguration = MLModelConfiguration()
+        let modelConfiguration = MLModelConfiguration()
         modelConfiguration.computeUnits = .all // Utilizes CPU, GPU, and Neural Engine (ANE)
         
         let model = try MLModel(contentsOf: modelURL, configuration: modelConfiguration)
         self.model = Mutex(model)
         
         self.configuration = try ModelConfiguration.load(from: configURL)
+        self.dimension = configuration.dimensions
         
         // Match the normalizer configuration of many BERT models (from huggingface-transformers)
         let normalizer = BertNormalizer(
@@ -46,7 +47,11 @@ public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
             lowercase: configuration.lowercase
         )
         
-        self.tokenizer = try BERTWordPieceTokenizer(vocabURL: vocabURL, normalizer: normalizer)
+        self.tokenizer = try BERTWordPieceTokenizer(
+            vocabURL: vocabURL,
+            normalizer: normalizer,
+            maximumInputCharactersPerWord: configuration.maximumInputCharactersPerWord
+        )
     }
 
     private static func validateDirectory(_ directory: URL) throws -> (model: URL, vocab: URL, config: URL) {
@@ -80,15 +85,15 @@ public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
             
             let shape: [Int] = [1, tokens.inputIDs.count]
 
-            let inputIDs = MLShapedArray(scalars: tokens.inputIDs, shape: shape)
-            let attentionMask = MLShapedArray(scalars: tokens.inputIDs, shape: shape)
+            let inputIDs = MLShapedArray<Int32>(scalars: tokens.inputIDs, shape: shape)
+            let attentionMask = MLShapedArray<Int32>(scalars: tokens.attentionMask, shape: shape)
             // BERT has a token type of either 0 or 1, depending on if the tokens are part of the first or second sentence. Since we always have a single sentence we just set all the IDs to zero.
-            let tokenTypeIDs = MLShapedArray(repeating: 0, shape: shape)
+            let tokenTypeIDs = MLShapedArray<Int32>(repeating: 0, shape: shape)
 
             let features = try MLDictionaryFeatureProvider(dictionary: [
-                "input_ids": inputIDs,
-                "attention_mask": attentionMask,
-                "token_type_ids": tokenTypeIDs
+                "input_ids": MLFeatureValue(shapedArray: inputIDs),
+                "attention_mask": MLFeatureValue(shapedArray: attentionMask),
+                "token_type_ids": MLFeatureValue(shapedArray: tokenTypeIDs)
             ])
 
             let output = try model.prediction(from: features)
@@ -97,7 +102,7 @@ public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
                 throw CoreMLRunnerError.noEmbeddingsInOutput
             }
             
-            let rawEmbeddings = MLShapedArray<Int32>(embedding)
+            let rawEmbeddings = MLShapedArray<Float16>(embedding)
             
             return rawEmbeddings.scalars.map(Double.init)
         }
