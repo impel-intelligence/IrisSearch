@@ -71,7 +71,7 @@ public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
         
         let configURL = directory.appendingPathComponent("config", conformingTo: .json)
         
-        guard FileManager.default.fileExists(atPath: vocabURL.path(percentEncoded: false)) else {
+        guard FileManager.default.fileExists(atPath: configURL.path(percentEncoded: false)) else {
             throw CoreMLRunnerInitError.missingConfig
         }
         

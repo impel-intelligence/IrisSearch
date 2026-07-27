@@ -66,3 +66,4 @@ The config file should have the same structure and types as this json object:
     "dimensions": int
 }
 ```
+1
