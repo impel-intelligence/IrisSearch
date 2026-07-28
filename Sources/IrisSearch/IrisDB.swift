@@ -14,6 +14,7 @@ import IrisCommon
 public enum IrisDBError: Error {
     case documentNotFound
     case noDocuments
+    case nLessThanZero
 }
 
 /// Database Structure File package
@@ -416,6 +417,8 @@ extension IrisDB {
 // MARK: Search
 extension IrisDB {
     public func search(within uuid: UUID, query: IrisQuery, semanticCutoff: Float = 0.6, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> SearchResult {
+        guard nItems > 0 else { throw IrisDBError.nLessThanZero }
+        
         let document = try await readDocument(uuid: uuid)
         guard let document else { throw IrisDBError.noDocuments }
                 
@@ -512,6 +515,8 @@ extension IrisDB {
     }
     
     public func search(query: IrisQuery, nItems: Int = 10, semanticCutoff: Float = 0.6, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> [SearchResult] {
+        guard nItems > 0 else { throw IrisDBError.nLessThanZero }
+        
         let maximumPieces = try await dbPool.read { db in
             return try DocumentPiece.fetchCount(db)
         }
