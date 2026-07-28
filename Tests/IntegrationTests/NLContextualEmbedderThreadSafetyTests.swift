@@ -8,6 +8,7 @@
 import Testing
 import NaturalLanguage
 @testable import IrisSearch
+import AppleIntelligenceEmbedder
 
 @Suite struct NLContextualEmbedderThreadSafetyTests {
     /// Documents the underlying bug: calling `NLContextualEmbedding.embeddingResult`

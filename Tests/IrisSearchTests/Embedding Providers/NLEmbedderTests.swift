@@ -8,6 +8,7 @@
 import Testing
 @testable import IrisSearch
 import NaturalLanguage
+import AppleIntelligenceEmbedder
 
 @Test func simpleEmbedding() async throws {
     let embedder = try NLEmbedder(language: .english)

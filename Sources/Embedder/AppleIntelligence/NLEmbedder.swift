@@ -7,6 +7,7 @@
 
 import NaturalLanguage
 import Synchronization
+import IrisCommon
 
 extension IrisLanguage {
     var nlLanguage: NLLanguage {
