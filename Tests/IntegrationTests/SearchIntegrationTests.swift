@@ -11,9 +11,11 @@ import Foundation
 @testable import Digester
 import IrisCommon
 import TestUtilities
+import AppleIntelligenceEmbedder
 
-class SearchIntegrationTests {
-    @Test()
+@Suite("Search integration testing", .tags(.lfs))
+struct SearchIntegrationTests {
+    @Test("Test performance of search against a collection of ARXIV documents")
     func arxivProcessAndSearch() async throws {
         let directories = TestingDirectories()
         

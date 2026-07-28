@@ -40,3 +40,30 @@ swift test
 ```swift
 swift test --skip network
 ```
+
+### Without any files from git LFS
+swift test --skip lfs
+
+## Embedding Models
+Some default embeddings are provided in the regular `IrisSearch` package. More are provided in the `Embedders` package, which links to [swift-embeddings](https://github.com/jkrukowski/swift-embeddings/tree/main).
+
+### CoreML Embedder
+The CoreML embedder allows you to use a pre-compiled (`.mlmodelc`) file as an embeddign model. This model *must* have the following inputs `input_ids (int32)`, `attention_mask (int32)`, `token_type_ids (int32)`. These are based on the input into BERT models.
+
+#### CoreML Model Configuration
+To configure the output of a CoreML model you *need* to provide a `config.json` file alongside your `.mlmodelc` file. You must also provide the `vocab.txt` for the model you are working with.
+
+The config file should have the same structure and types as this json object:
+```json
+  {
+    "tokenizerClass": "<tokenizer_class>",
+    "maximumInputCharactersPerWord": int,
+    "cleanText": true | false,
+    "handleChineseCharacters": true | false,
+    "stripAccents": true | false | null,
+    "lowercase": true | false | null,
+    "searchPrefix": "<search_prefix>" | null,
+    "dimensions": int
+}
+```
+1

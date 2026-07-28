@@ -7,6 +7,7 @@
 
 import IrisCommon
 import Foundation
+import Testing
 
 public class TestingDirectories {
     let uuid: UUID = UUID()
@@ -91,3 +92,9 @@ public func measurePerformance(nRuns: Int = 100, _ block: @escaping () async thr
     
     return PerformanceBundle(average: average, variance: variance, standardDeviation: standardDeviation, relativeStandardDeviation: relativeStandardDeviation, values: seconds)
 }
+
+public extension Testing.Tag {
+    @Tag static var lfs: Self
+    @Tag static var network: Self
+}
+

@@ -9,17 +9,23 @@ let package = Package(
         .macOS(.v15),
         .iOS(.v26)
     ],
+    
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(name: "IrisCommon", targets: ["IrisCommon"]),
         .library(name: "IrisSearch", targets: ["IrisSearch"]),
         .library(name: "Digester", targets: ["Digester"]),
+        
+        // Embedding Providers
+        .library(name: "CoreMLEmbedder", targets: ["CoreMLEmbedder"]),
+        .library(name: "AppleIntelligenceEmbedder", targets: ["AppleIntelligenceEmbedder"])
     ],
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.4.1"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6"),
-        .package(url: "https://github.com/apple/swift-log", from: "1.6.0")
+        .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
+//        .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.1.0")
     ],
     targets: [
         // Common
@@ -52,7 +58,8 @@ let package = Package(
             name: "IrisSearchTests",
             dependencies: [
                 "IrisSearch",
-                "TestUtilities"
+                "TestUtilities",
+                "AppleIntelligenceEmbedder"
             ],
             resources: [
                 .copy("../Test Documents")
@@ -86,11 +93,33 @@ let package = Package(
             dependencies: [
                 "Digester",
                 "IrisSearch",
-                "TestUtilities"
+                "TestUtilities",
+                "AppleIntelligenceEmbedder"
             ],
             resources: [
                 .copy("../Test Documents")
             ]
-       )
+       ),
+         
+        // MARK: Embeddings
+        .target(
+            name: "CoreMLEmbedder",
+            dependencies: ["IrisCommon"],
+            path: "Sources/Embedder/CoreML",
+        ),
+        
+        .testTarget(
+            name: "CoreMLEmbedderTests",
+            dependencies: ["CoreMLEmbedder", "TestUtilities"],
+            resources: [
+                .copy("../Test Documents/ml"),
+            ]
+        ),
+    
+        .target(
+            name: "AppleIntelligenceEmbedder",
+            dependencies: ["IrisCommon"],
+            path: "Sources/Embedder/AppleIntelligence",
+        ),
     ]
 )

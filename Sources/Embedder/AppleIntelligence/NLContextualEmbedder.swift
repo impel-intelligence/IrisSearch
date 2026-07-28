@@ -8,6 +8,7 @@
 import NaturalLanguage
 import os
 import Synchronization
+import IrisCommon
 
 public final class NLContextualEmbedder: EmbeddingProvider, Sendable {
     enum EmbeddingError: Error {
