@@ -33,14 +33,14 @@ public actor IrisDB {
     
     private let databaseURL: URL
     private let textIndex: FaissIndex
-    private let textEmbedder: EmbeddingProvider
+    private let textEmbedder: TextEmbeddingProvider
     
     private let dbPool: DatabasePool
     private let writeExecutor: KeyedExecutor<UUID> = KeyedExecutor()
     
     public let contextSize: Int = 512
     
-    public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider) throws {
+    public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: TextEmbeddingProvider) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
 
         self.textEmbedder = textEmbedder

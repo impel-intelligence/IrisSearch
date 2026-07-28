@@ -10,7 +10,7 @@ import os
 import Synchronization
 import IrisCommon
 
-public final class NLContextualEmbedder: EmbeddingProvider, Sendable {
+public final class NLContextualEmbedder: TextEmbeddingProvider, Sendable {
     enum EmbeddingError: Error {
         case couldNotCreateVector
         case languageUnavailable(NLLanguage)

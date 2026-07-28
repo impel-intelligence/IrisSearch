@@ -19,7 +19,7 @@ enum CoreMLRunnerError: Error {
     case noEmbeddingsInOutput
 }
 
-public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
+public final class CoreMLTextEmbedder: Sendable, TextEmbeddingProvider {
     let model: Mutex<MLModel>
     let tokenizer: BERTWordPieceTokenizer
     let configuration: ModelConfiguration
@@ -28,7 +28,7 @@ public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
 
     public init(modelDirectory: URL) throws {
         // Make sure we can find the .mlmodelc and the vocab.txt files we need.
-        let (modelURL, vocabURL, configURL) = try CoreMLEmbedder.validateDirectory(modelDirectory)
+        let (modelURL, vocabURL, configURL) = try CoreMLTextEmbedder.validateDirectory(modelDirectory)
         
         let modelConfiguration = MLModelConfiguration()
         modelConfiguration.computeUnits = .all // Utilizes CPU, GPU, and Neural Engine (ANE)

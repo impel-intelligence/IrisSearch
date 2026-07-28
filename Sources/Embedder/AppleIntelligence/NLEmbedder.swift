@@ -19,7 +19,7 @@ extension IrisLanguage {
 }
 
 @available(macOS 15.0, *)
-public final class NLEmbedder: EmbeddingProvider, Sendable {
+public final class NLEmbedder: TextEmbeddingProvider, Sendable {
     public enum EmbeddingError: Error {
         case couldNotCreateVector
         case languageUnavailable(NLLanguage)

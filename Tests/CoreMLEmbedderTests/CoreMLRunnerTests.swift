@@ -15,9 +15,9 @@ import TestUtilities
 struct CoreMLRunnerTests {
     static let expectedDimension = 384
 
-    private func makeEmbedder() throws -> CoreMLEmbedder {
+    private func makeEmbedder() throws -> CoreMLTextEmbedder {
         let modelDirectory = try #require(Bundle.module.url(forResource: "bge", withExtension: nil, subdirectory: "ml"))
-        return try CoreMLEmbedder(modelDirectory: modelDirectory)
+        return try CoreMLTextEmbedder(modelDirectory: modelDirectory)
     }
 
     @Test("Model and tokenizer load without throwing")

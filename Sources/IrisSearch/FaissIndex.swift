@@ -31,7 +31,7 @@ final class FaissIndex {
         case invalidVectorDimension(size: Int, expected: Int)
     }
 
-    private var embeddingProvider: EmbeddingProvider
+    private var embeddingProvider: TextEmbeddingProvider
     
     private var indexLocation: URL
     
@@ -39,7 +39,7 @@ final class FaissIndex {
     
     var cachedDocumentIndices: [UUID: IDMap] = [:]
     
-    init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws {
+    init(indexLocation: URL, embeddingProvider: TextEmbeddingProvider) throws {
         self.indexLocation = indexLocation
         self.embeddingProvider = embeddingProvider
         try initializeDB()
