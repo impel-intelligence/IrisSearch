@@ -102,9 +102,15 @@ public final class CoreMLEmbedder: Sendable, EmbeddingProvider {
                 throw CoreMLRunnerError.noEmbeddingsInOutput
             }
             
+            #if arch(arm64)
             let rawEmbeddings = MLShapedArray<Float16>(embedding)
-            
+
             return rawEmbeddings.scalars.map(Double.init)
+            #else
+            let rawEmbeddings = MLShapedArray<Float>(embedding)
+
+            return rawEmbeddings.scalars.map(Double.init)
+            #endif
         }
     }
     
