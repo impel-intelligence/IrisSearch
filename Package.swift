@@ -20,11 +20,17 @@ let package = Package(
         .library(name: "CoreMLEmbedder", targets: ["CoreMLEmbedder"]),
         .library(name: "AppleIntelligenceEmbedder", targets: ["AppleIntelligenceEmbedder"])
     ],
+    traits: [
+        .trait(name: "pdf_inspector"),
+        .default(enabledTraits: ["pdf_inspector"])
+    ],
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.4.1"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
+        
+        .package(path: "/Users/taylorlineman/Developer/git/pdf-inspector")
 //        .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.1.0")
     ],
     targets: [
@@ -72,7 +78,9 @@ let package = Package(
             dependencies: [
                 "IrisCommon",
                 .product(name: "SwiftSoup", package: "SwiftSoup"),
-                .product(name: "Logging", package: "swift-log")
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "PDFInspector", package: "pdf-inspector", condition: .when(traits: ["pdf_inspector"])),
+                .product(name: "pdf_inspectorFFI", package: "pdf-inspector", condition: .when(traits: ["pdf_inspector"]))
             ]
         ),
         .testTarget(

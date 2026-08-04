@@ -26,7 +26,7 @@ struct PDFTests {
             url: Bundle.module.url(forResource: "pdf-ingestion-test-suite", withExtension: "pdf", subdirectory: "Test Documents/pdf")!,
             numberOfPages: 10, numberOfPagesWithText: 9)
     ]) func testPDFDigester(pdfFile: PDFArgument) async throws {
-        let digestor = PDFDigester()
+        let digestor = PDFInspectorDigester()
         let digest = try await digestor.digest(file: pdfFile.url, contextSize: 100000)
         
         let nImage = digest.count { content in
@@ -61,7 +61,7 @@ struct PDFTests {
         Bundle.module.url(forResource: "simple-pdf-feature-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!,
         Bundle.module.url(forResource: "pdf-ingestion-test-suite", withExtension: "pdf", subdirectory: "Test Documents/pdf")!
     ]) func testPDFDigesterDocumentLengthReconciliation(pdfFile: URL) async throws {
-        let digestor = PDFDigester()
+        let digestor = PDFInspectorDigester()
         let digest = try await digestor.digest(file: pdfFile, contextSize: 200)
         
         let textLocations: [DocumentLocation] = digest.compactMap { piece in
@@ -85,7 +85,7 @@ struct PDFTests {
     
     @Test("Speed Test", arguments: [
         Bundle.module.url(forResource: "long-pdf-test", withExtension: "pdf", subdirectory: "Test Documents/pdf")!
-    ]) func testPDFConversioNSpeed(pdfURL: URL) async throws {
+    ]) func testPDFConversionSpeed(pdfURL: URL) async throws {
         let digestor = PDFDigester()
         
         let performance = try await measurePerformance(nRuns: 10) {
@@ -95,3 +95,16 @@ struct PDFTests {
         #expect(performance.average < 1)
     }
 }
+
+#if pdf_inspector
+struct PDFInspectorTests {
+    @Test("Speed Test", arguments: [
+        Bundle.module.url(forResource: "2606.09785v1", withExtension: "pdf", subdirectory: "Test Documents/Arxiv")!
+    ]) func testPDFConversionSpeed(pdfURL: URL) async throws {
+        let digestor = PDFInspectorDigester()
+        
+        _ = try await digestor.digest(file: pdfURL, contextSize: 100000)
+    }
+
+}
+#endif
