@@ -11,16 +11,7 @@ import IrisCommon
 import Foundation
 
 struct MarkdownChunkerTests {
-//    @Test func testContent() async throws {
-//        let markdownURL = Bundle.module.url(forResource: "syntax-test", withExtension: "md", subdirectory: "Test Documents/Markdown")!
-//        let text = try String(contentsOf: markdownURL, encoding: .utf8)
-//        let chunks = await MarkdownChunker.chunkContent(for: text, contextSize: 512)
-//        let textContent = chunks.compactMap { $0.textContent }.joined()
-//
-//        checkLines(correct: text, created: textContent)
-//    }
-    
-    @Test func testHeaderGrouping() async throws {
+    @Test func testHeaderGrouping() throws {
         let markdown = """
             # Header 1
             ## Header 2
@@ -28,11 +19,11 @@ struct MarkdownChunkerTests {
             # Header 1
             """
         
-        let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
+        let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         #expect(chunks.count == 2, "There should be two chunks")
     }
     
-    @Test func testTable() async throws {
+    @Test func testTable() throws {
         let markdown = """
             | Syntax      | Description |
             | ----------- | ----------- |
@@ -40,7 +31,7 @@ struct MarkdownChunkerTests {
             | Paragraph   | Text        |
             """
         
-        let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
+        let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         let textContent = chunks.compactMap { $0.textContent }.joined()
         
         #expect(textContent.contains("Syntax"))
@@ -51,7 +42,7 @@ struct MarkdownChunkerTests {
         #expect(textContent.contains("Text"))
     }
 
-    @Test func testCode() async throws {
+    @Test func testCode() throws {
         let markdown = """
             ```swift
             let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
@@ -59,7 +50,7 @@ struct MarkdownChunkerTests {
             ```
             """
         
-        let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
+        let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         let textContent = chunks.compactMap { $0.textContent }.joined()
 
         #expect(textContent.contains("swift"))
@@ -67,45 +58,45 @@ struct MarkdownChunkerTests {
         #expect(textContent.contains("let textContent"))
     }
     
-    @Test func testLink() async throws {
+    @Test func testLink() throws {
         let markdown = """
             [Hello World](hello.png)
             """
         
-        let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
+        let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         let textContent = chunks.compactMap { $0.textContent }.joined()
 
         #expect(textContent.contains("hello.png"))
         #expect(textContent.contains("Hello World"))
     }
 
-    @Test func testImage() async throws {
+    @Test func testImage() throws {
         let markdown = """
             ![Hello World](hello.png)
             """
         
-        let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
+        let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         let textContent = chunks.compactMap { $0.textContent }.joined()
 
         #expect(textContent.contains("hello.png"))
         #expect(textContent.contains("Hello World"))
     }
 
-    @Test func testHTML() async throws {
+    @Test func testHTML() throws {
         let markdown = """
             <div class="footer">
                 &copy; 2004 Foo Corporation
             </div>
             """
         
-        let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
+        let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         let textContent = chunks.compactMap { $0.textContent }.joined()
 
         #expect(textContent.contains("class="))
         #expect(textContent.contains("&copy"))
     }
     
-    @Test func testEmphasisAndBold() async throws {
+    @Test func testEmphasisAndBold() throws {
         let markdown = """
             *single asterisks*
 
@@ -116,7 +107,7 @@ struct MarkdownChunkerTests {
             __double underscores__
             """
         
-        let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
+        let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         let textContent = chunks.compactMap { $0.textContent }.joined()
         
         #expect(textContent.contains("*single asterisks*"))
@@ -125,7 +116,7 @@ struct MarkdownChunkerTests {
         #expect(!textContent.contains("__double underscores__"), "Underscores should be normalized to asterisks")
     }
 
-    @Test func testParagraph() async throws {
+    @Test func testParagraph() throws {
         let markdown = """
             # Header
             This is a normal piece of tex that should be recognized as a paragraph.
@@ -134,10 +125,9 @@ struct MarkdownChunkerTests {
             This is a second level header.
             """
         
-        let chunks = await MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
+        let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         let textContent = chunks.compactMap { $0.textContent }.joined()
         
         #expect(textContent.contains("This is a normal piece of tex that should be recognized as a paragraph."))
     }
-
 }
