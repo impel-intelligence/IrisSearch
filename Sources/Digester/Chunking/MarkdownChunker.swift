@@ -10,13 +10,77 @@ import IrisCommon
 import Markdown
 import SwiftSoup
 
+enum MarkdownBlock {
+    case heading(level: Int, text: String, range: SourceRange)
+    case text(content: String, range: SourceRange)
+    case image(src: String, alt: String?, range: SourceRange)
+    case thematicBreak
+}
+
+struct BlockCollector: MarkupWalker {
+    private(set) var blocks: [MarkdownBlock] = []
+    
+    mutating func visitHeading(_ heading: Heading) {
+        // Range should always be populated since this walker is only ever walking a parsed document.
+        guard let range = heading.range else { return }
+        
+        // Reconstruct the original header styling for embeddings since they are contextual information
+        let shebangs = Array(repeating: "#", count: heading.level).joined(separator: "")
+        let text = "\(shebangs) \(heading.plainText)"
+        blocks.append(.heading(level: heading.level, text: text, range: range))
+    }
+    
+    mutating func visitImage(_ image: Image) {
+        // Range should always be populated since this walker is only ever walking a parsed document.
+        guard let range = image.range else { return }
+        
+        blocks.append(.text(content: image.format(), range: range))
+        
+        // An image with no source is useless to us.
+        guard let source = image.source else { return }
+        blocks.append(.image(src: source, alt: image.title, range: range))
+    }
+    
+    mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) {
+        // Tells the chunker to break the chunk and start a new one no matter what.
+        blocks.append(.thematicBreak)
+    }
+    
+    mutating func visitParagraph(_ paragraph: Paragraph) {
+        // Range should always be populated since this walker is only ever walking a parsed document.
+        guard let range = paragraph.range else { return }
+        blocks.append(.text(content: paragraph.format(), range: range))
+    }
+    
+    // Edited by Claude Opus 5 (Anthropic) on 2026-08-04
+    mutating func defaultVisit(_ markup: any Markup) {
+        // `MarkupWalker` implements `defaultVisit` as `descendInto`, so an override has to keep
+        // descending itself or the walk stops dead at the first node without a visit method above.
+        // Descending *and* collecting would double count, since a container's text would be
+        // collected once for the container and again for each child.
+        guard !(markup is Markdown.Document),
+              let block = markup as? BlockMarkup,
+              block.childCount == 0 || block is Table else {
+            descendInto(markup)
+            return
+        }
+        
+        // Range should always be populated since this walker is only ever walking a parsed document.
+        guard let range = block.range else { return }
+
+        // Blocks with nothing to walk into — code blocks, HTML blocks — plus tables, whose
+        // markdown only reads correctly whole. Collect their source form rather than descending.
+        blocks.append(.text(content: block.format(), range: range))
+    }
+}
+
 struct MarkdownChunker {
     public static func chunkContent(
         for content: String,
         contextSize: Int,
         sequenceOffset: Int = 0,
 //        imageResolver: ((String) async throws -> Data?),
-    ) async -> [EmbeddableContent] {
+    ) -> [EmbeddableContent] {
         let document = Document(parsing: content)
         var collector = BlockCollector()
         collector.visit(document)
@@ -108,70 +172,5 @@ struct MarkdownChunker {
         }
         
         return textContent
-    }
-}
-
-enum MarkdownBlock {
-    case heading(level: Int, text: String, range: SourceRange)
-    case text(content: String, range: SourceRange)
-    case image(src: String, alt: String?, range: SourceRange)
-    case thematicBreak
-}
-
-struct BlockCollector: MarkupWalker {
-    private(set) var blocks: [MarkdownBlock] = []
-    
-    mutating func visitHeading(_ heading: Heading) {
-        // Range should always be populated since this walker is only ever walking a parsed document.
-        guard let range = heading.range else { return }
-        
-        // Reconstruct the original header styling for embeddings since they are contextual information
-        let shebangs = Array(repeating: "#", count: heading.level).joined(separator: "")
-        let text = "\(shebangs) \(heading.plainText)"
-        blocks.append(.heading(level: heading.level, text: text, range: range))
-    }
-    
-    mutating func visitImage(_ image: Image) {
-        // Range should always be populated since this walker is only ever walking a parsed document.
-        guard let range = image.range else { return }
-        
-        blocks.append(.text(content: image.format(), range: range))
-        
-        // An image with no source is useless to us.
-        guard let source = image.source else { return }
-        blocks.append(.image(src: source, alt: image.title, range: range))
-    }
-    
-    mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) {
-        // Tells the chunker to break the chunk and start a new one no matter what.
-        blocks.append(.thematicBreak)
-    }
-    
-    
-    mutating func visitParagraph(_ paragraph: Paragraph) {
-        // Range should always be populated since this walker is only ever walking a parsed document.
-        guard let range = paragraph.range else { return }
-        blocks.append(.text(content: paragraph.format(), range: range))
-    }
-    
-    // Edited by Claude Opus 5 (Anthropic) on 2026-08-04
-    mutating func defaultVisit(_ markup: any Markup) {
-        // `MarkupWalker` implements `defaultVisit` as `descendInto`, so an override has to keep
-        // descending itself or the walk stops dead at the first node without a visit method above.
-        // Descending *and* collecting would double count, since a container's text would be
-        // collected once for the container and again for each child.
-        guard !(markup is Markdown.Document),
-              let block = markup as? BlockMarkup,
-              block.childCount == 0 || block is Table else {
-            descendInto(markup)
-            return
-        }
-        
-        // Range should always be populated since this walker is only ever walking a parsed document.
-        guard let range = block.range else { return }
-
-        // Blocks with nothing to walk into — code blocks, HTML blocks — plus tables, whose
-        // markdown only reads correctly whole. Collect their source form rather than descending.
-        blocks.append(.text(content: block.format(), range: range))
     }
 }
