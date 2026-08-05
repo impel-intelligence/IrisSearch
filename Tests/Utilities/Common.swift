@@ -53,6 +53,53 @@ public func chunkedEmbeddableContent(_ texts: [String]) -> [EmbeddableContent] {
     }
 }
 
+
+@discardableResult
+public func measurePerformance<Element>(nRuns: Int = 10, array: [Element] , _ block: @escaping (Element) async throws -> Void) async rethrows -> PerformanceBundle {
+    let throwAwayRuns = nRuns / 10
+    
+    // Warmup the function
+    for _ in 0..<throwAwayRuns {
+        for element in array {
+            try await block(element)
+        }
+    }
+    
+    var runs: [ContinuousClock.Instant.Duration] = []
+    
+    for _ in 0..<nRuns {
+        for element in array {
+            let clock = ContinuousClock()
+            
+            let elapsed = try await clock.measure {
+                try await block(element)
+            }
+            
+            runs.append(elapsed)
+        }
+    }
+    
+    // Convert each measured duration to seconds as a Double.
+    let seconds = runs.map { run -> Double in
+        let components = run.components
+        return Double(components.seconds) + Double(components.attoseconds) / 1e18
+    }
+    
+    let count = Double(seconds.count)
+    let average = seconds.reduce(0, +) / count
+    
+    // Sample standard deviation (matches XCTest, which uses n - 1).
+    let variance = seconds.reduce(0) { $0 + ($1 - average) * ($1 - average) } / (count - 1)
+    let standardDeviation = variance.squareRoot()
+    
+    // Relative standard deviation as a percentage of the average.
+    let relativeStandardDeviation = average == 0 ? 0 : (standardDeviation / average) * 100
+    
+    print("measured [Time, seconds] average: \(average), relative standard deviation: \(relativeStandardDeviation), values: \(seconds)")
+    
+    return PerformanceBundle(average: average, variance: variance, standardDeviation: standardDeviation, relativeStandardDeviation: relativeStandardDeviation, values: seconds)
+}
+
 @discardableResult
 public func measurePerformance(nRuns: Int = 100, _ block: @escaping () async throws -> Void) async rethrows -> PerformanceBundle {
     let throwAwayRuns = nRuns / 10

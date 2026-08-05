@@ -152,6 +152,8 @@ struct MarkdownChunker {
         
         flushPending(prefix: headerPrefix())
         
+        var chunkIndex = sequenceOffset
+        
         var textContent: [EmbeddableContent] = []
         
         for (offset, chunk) in goodTexts.enumerated() {
@@ -167,8 +169,13 @@ struct MarkdownChunker {
             }
             let textRange = TextLocation(line: minLoc.line, column: minLoc.column)..<TextLocation(line: maxLoc.line, column: maxLoc.column)
             let anchor = DocumentAnchor.location(textRange: textRange)
-            let location = DocumentLocation(sequenceIndex: sequenceOffset + offset, documentLength: -1, anchor: anchor)
+            let location = DocumentLocation(sequenceIndex: sequenceOffset + offset, documentLength: chunkIndex, anchor: anchor)
             textContent.append(EmbeddableContent.text(content: content, location: location))
+            chunkIndex += 1
+        }
+        
+        for index in textContent.indices {
+            textContent[index] = textContent[index].withNewDocumentLength(length: textContent.count)
         }
         
         return textContent

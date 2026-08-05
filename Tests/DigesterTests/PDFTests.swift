@@ -94,4 +94,19 @@ struct PDFTests {
         
         #expect(performance.average < 1)
     }
+    
+    @Test("Speed Small PDFS")
+    func testPDFConversionSpeedSmallPDFS() async throws {
+        let papersURL = Bundle.module.url(forResource: "Arxiv", withExtension: nil, subdirectory: "Test Documents")!
+        let papers = try FileManager.default.contentsOfDirectory(atPath: papersURL.path(percentEncoded: false)).shuffled()
+
+        let digester = PDFDigester()
+        
+        let performance = try await measurePerformance(nRuns: 10, array: papers) { path in
+            let url = papersURL.appendingPathComponent(path, conformingTo: .pdf)
+            _ = try await digester.digest(file: url, contextSize: 100000)
+        }
+        
+        #expect(performance.average < 1)
+    }
 }
