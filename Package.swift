@@ -9,7 +9,6 @@ let package = Package(
         .macOS(.v15),
         .iOS(.v26)
     ],
-    
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(name: "IrisCommon", targets: ["IrisCommon"]),
@@ -20,12 +19,16 @@ let package = Package(
         .library(name: "CoreMLEmbedder", targets: ["CoreMLEmbedder"]),
         .library(name: "AppleIntelligenceEmbedder", targets: ["AppleIntelligenceEmbedder"])
     ],
+    traits: [
+      "pdf_inspector",
+    ],
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.4.1"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
-        .package(url: "https://github.com/swiftlang/swift-markdown", from: "0.8.0")
+        .package(url: "https://github.com/swiftlang/swift-markdown", from: "0.8.0"),
+        .package(url: "https://github.com/impel-intelligence/pdf-inspector-swift", branch: "main")
     ],
     targets: [
         // Common
@@ -74,6 +77,8 @@ let package = Package(
                 .product(name: "SwiftSoup", package: "SwiftSoup"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Markdown", package: "swift-markdown"),
+                .product(name: "PDFInspector", package: "pdf-inspector-swift"),
+                .product(name: "PDFInspectorFFI", package: "pdf-inspector-swift")
             ]
         ),
         .testTarget(

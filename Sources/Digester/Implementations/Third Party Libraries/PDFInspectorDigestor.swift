@@ -9,7 +9,11 @@
 import UniformTypeIdentifiers
 import IrisCommon
 import Foundation
-import PDFInspector
+import pdf_inspector_swift
+
+public enum PDFInspectorDigesterError: Error {
+    case noMarkdown
+}
 
 final class PDFInspectorDigester: FileDigester, Sendable {
     static let fileTypes: [UTType] = [.pdf]
@@ -22,14 +26,12 @@ final class PDFInspectorDigester: FileDigester, Sendable {
 
         guard let data = FileManager.default.contents(atPath: file.path(percentEncoded: false)) else { throw DigestionError.fileNotReadable }
 
-        var contentPieces: [EmbeddableContent] = []
-
         let pdfResult = try processPdfBytes(data: data)
-//        print(pdfResult.markdown)
         
-        
-        
-        return contentPieces
+        guard let markdown = pdfResult.markdown else { throw PDFInspectorDigesterError.noMarkdown }
+
+        // Parse and chunk markdown
+        return MarkdownChunker.chunkContent(for: markdown, contextSize: contextSize)
     }
 }
 #endif

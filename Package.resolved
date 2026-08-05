@@ -1,5 +1,5 @@
 {
-  "originHash" : "dc116a6f248babd5fdfb84a66032adee493f24b65858c20f5928a5fdea57c0f0",
+  "originHash" : "4d6b47bcc991964c3a2799c10fc0c7d67b24e0f36bbb51f073f4de8b1f7407de",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "b83108d10f42680d78f23fe4d4d80fc88dab3212",
         "version" : "7.11.1"
+      }
+    },
+    {
+      "identity" : "pdf-inspector-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/impel-intelligence/pdf-inspector-swift",
+      "state" : {
+        "branch" : "main",
+        "revision" : "535c9d09119e54c69c02f7005247d3be888688af"
       }
     },
     {

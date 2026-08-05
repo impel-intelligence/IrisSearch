@@ -21,6 +21,10 @@ struct MarkdownChunkerTests {
         
         let chunks = MarkdownChunker.chunkContent(for: markdown, contextSize: 512)
         #expect(chunks.count == 2, "There should be two chunks")
+        let lastChunk = try #require(chunks.last)
+        
+        #expect(lastChunk.location.documentLength == 2, "The document length should be 2")
+        #expect(lastChunk.location.sequenceIndex == 1, "There lat sequence should be 1, since it is 0 indexed.")
     }
     
     @Test func testTable() throws {

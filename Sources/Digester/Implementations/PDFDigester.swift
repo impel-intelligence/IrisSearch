@@ -77,11 +77,11 @@ final class PDFDigester: FileDigester, Sendable {
 
         // Process both the page text and images at the same time.
         async let textPieces = extractText(from: pages)
-        async let renderedPages: [RenderedPage] = renderPages(from: pages)
+//        async let renderedPages: [RenderedPage] = renderPages(from: pages)
 
         // Materialize both results concurrently because of async let.
         let resolvedTextPieces = try await textPieces
-        let resolvedRenderedPages = try await renderedPages
+//        let resolvedRenderedPages = try await renderedPages
 
         // If per-page string extraction failed, extract all of the text in the PDF.
         if resolvedTextPieces.isEmpty, let content = pdfDocument.string {
@@ -109,12 +109,12 @@ final class PDFDigester: FileDigester, Sendable {
             contentPieces = contentPieces.map { $0.withNewDocumentLength(length: contentPieces.count) }
         }
 
-        for (offset, page) in resolvedRenderedPages.enumerated() {
-            let location = DocumentLocation(sequenceIndex: offset, documentLength: resolvedRenderedPages.count, anchor: .pdf(page: page.index, characterRange: nil))
-            let pageCaption = "Page \(page.label ?? String(page.index)) of PDF"
-            let embeddable = EmbeddableContent.image(content: page.jpgData, caption: pageCaption, location: location)
-            contentPieces.append(embeddable)
-        }
+//        for (offset, page) in resolvedRenderedPages.enumerated() {
+//            let location = DocumentLocation(sequenceIndex: offset, documentLength: resolvedRenderedPages.count, anchor: .pdf(page: page.index, characterRange: nil))
+//            let pageCaption = "Page \(page.label ?? String(page.index)) of PDF"
+//            let embeddable = EmbeddableContent.image(content: page.jpgData, caption: pageCaption, location: location)
+//            contentPieces.append(embeddable)
+//        }
 
         return contentPieces
     }
