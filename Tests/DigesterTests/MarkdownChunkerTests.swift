@@ -1,6 +1,6 @@
 //
 //  MarkdownChunkerTests.swift
-//  IrisSearch-faeture-pdf-inspector
+//  IrisSearch
 //
 //  Created by Taylor Lineman on 8/4/26.
 //
