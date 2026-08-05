@@ -25,7 +25,7 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
-//        .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.1.0")
+        .package(url: "https://github.com/swiftlang/swift-markdown", from: "0.8.0")
     ],
     targets: [
         // Common
@@ -72,7 +72,8 @@ let package = Package(
             dependencies: [
                 "IrisCommon",
                 .product(name: "SwiftSoup", package: "SwiftSoup"),
-                .product(name: "Logging", package: "swift-log")
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "Markdown", package: "swift-markdown"),
             ]
         ),
         .testTarget(

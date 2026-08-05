@@ -9,6 +9,7 @@ import Foundation
 
 public enum DocumentAnchor: Codable, Sendable, CustomStringConvertible {
     case text(characterRange: Range<Int>)
+    case location(textRange: Range<TextLocation>)
     case pdf(page: Int, characterRange: Range<Int>?)
     case selector(selectors: [String])
     
@@ -16,7 +17,7 @@ public enum DocumentAnchor: Codable, Sendable, CustomStringConvertible {
         switch self {
         case .text(let characterRange):
             return "Characters: \(characterRange.lowerBound) up to \(characterRange.upperBound)"
-        case .pdf(let page, let characterRange):
+        case .pdf(let page, _):
 //            if let characterRange {
 //                return "Page \(page), Characters: \(characterRange.lowerBound) up to \(characterRange.upperBound)"
 //            } else {
@@ -24,6 +25,8 @@ public enum DocumentAnchor: Codable, Sendable, CustomStringConvertible {
 //            }
         case .selector(let selectors):
             return "Selectors: \(selectors.joined(separator: ", "))"
+        case .location(let characterRange):
+            return "Location: \(characterRange.lowerBound.description) to \(characterRange.upperBound.description)"
         }
     }
 }

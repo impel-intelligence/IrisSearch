@@ -15,8 +15,7 @@ struct FactoryTests {
         UTType.plainText,
         UTType.cHeader,
         UTType.cSource,
-        UTType.swiftSource,
-        UTType("com.unknown.md")!
+        UTType.swiftSource
     ]) func testTxtDigesterReturned(utType: UTType) throws {
         let returnedDigester = try DigesterFactory.digester(for: utType)
         #expect(type(of: TXTDigester()) == type(of: returnedDigester))
@@ -27,6 +26,20 @@ struct FactoryTests {
         let returnedDigester = try DigesterFactory.digester(for: utType)
         #expect(type(of: TXTDigester()) == type(of: returnedDigester))
     }
+    
+    @Test("Ensure the markdown digester is returned by the factory is correct for various text UTTypes.", arguments: [
+        UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)
+    ]) func testMarkdownReturned(utType: UTType) throws {
+        let returnedDigester = try DigesterFactory.digester(for: utType)
+        #expect(type(of: MarkdownDigester()) == type(of: returnedDigester))
+    }
+    
+    @Test("Ensure the text digester is retruned by the factory for all of its core types.", arguments: MarkdownDigester.fileTypes)
+    func testMarkdownDigesterDefaultTypes(utType: UTType) throws {
+        let returnedDigester = try DigesterFactory.digester(for: utType)
+        #expect(type(of: MarkdownDigester()) == type(of: returnedDigester))
+    }
+
 
     @Test("Ensure the pdf digester is returned by the factory is correct for various pdf UTTypes.", arguments: [
         UTType.pdf,

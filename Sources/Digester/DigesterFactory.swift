@@ -13,7 +13,8 @@ public struct DigesterFactory {
     private static let registeredDigesters: [any FileDigester.Type] = [
         TXTDigester.self,
         PDFDigester.self,
-        HTMLandXMLDigester.self
+        HTMLandXMLDigester.self,
+        MarkdownDigester.self
     ]
     
     /// All uniform type identifiers that are supported by registered File Digesters.

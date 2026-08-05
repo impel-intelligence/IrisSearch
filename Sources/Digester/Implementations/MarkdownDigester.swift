@@ -1,21 +1,23 @@
 //
-//  TxtDigester.swift
+//  MarkdownDigester.swift
 //  IrisSearch
 //
-//  Created by Taylor Lineman on 6/10/26.
+//  Created by Taylor Lineman on 8/4/26.
 //
 
 import UniformTypeIdentifiers
 import IrisCommon
 import Foundation
 
-/// A catch-all text digester that can handle basic text documents.
-///
-/// There is no "structure" to the documents digested, They are chunked based purely on the
-/// `contextSize` provided at digestion time.
-final class TXTDigester: FileDigester {
-    /// File types supported by the text digester.
-    static let fileTypes: [UTType] = [.text, .plainText, .utf8PlainText, .utf16PlainText, .utf16ExternalPlainText]
+/// A markdown digester, that chunks based on markdown sections.
+final class MarkdownDigester: FileDigester {
+    /// File types supported by the markdown digester.
+    ///
+    /// # Custom Types
+    /// | Description | UTI | Extensions | Conforms to | MIME types | Reference |
+    /// | --- | --- | --- | --- | --- | --- |
+    /// | Markdown document | net.daringfireball.markdown | .md, .markdown | public.plain-text | text/markdown | https://daringfireball.net/projects/markdown/ |
+    static let fileTypes: [UTType] = [UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)]
 
     required init() { }
     
@@ -30,13 +32,11 @@ final class TXTDigester: FileDigester {
     ///            the input `file.`
     func digest(file: URL, contextSize: Int) throws -> [EmbeddableContent] {
         // Will bail out if the url is not valid
-        try TXTDigester.validateLocalURL(file)
+        try MarkdownDigester.validateLocalURL(file)
 
         var usedEncoding: String.Encoding = .utf8
         let stringContent = try String(contentsOf: file, usedEncoding: &usedEncoding)
 
-        return SentenceChunker.chunkContent(for: stringContent, contextSize: contextSize) { range in
-            return .text(characterRange: range)
-        }
+        return MarkdownChunker.chunkContent(for: stringContent, contextSize: contextSize)
     }
 }
