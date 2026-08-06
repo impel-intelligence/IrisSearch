@@ -80,8 +80,11 @@ final class PDFDigester: FileDigester, Sendable {
         async let renderedPages: [RenderedPage] = renderPages(from: pages)
 
         // Materialize both results concurrently because of async let.
-        let resolvedTextPieces = try await textPieces
-        let resolvedRenderedPages = try await renderedPages
+        var resolvedTextPieces = try await textPieces
+        var resolvedRenderedPages = try await renderedPages
+        
+        resolvedTextPieces.sort(by: { $0.1 < $1.1 })
+        resolvedRenderedPages.sort(by: { $0.index < $1.index })
 
         // If per-page string extraction failed, extract all of the text in the PDF.
         if resolvedTextPieces.isEmpty, let content = pdfDocument.string {
