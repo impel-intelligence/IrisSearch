@@ -48,7 +48,7 @@ swift test --skip lfs
 Some default embeddings are provided in the regular `IrisSearch` package. More are provided in the `Embedders` package, which links to [swift-embeddings](https://github.com/jkrukowski/swift-embeddings/tree/main).
 
 ### CoreML Embedder
-The CoreML embedder allows you to use a pre-compiled (`.mlmodelc`) file as an embeddign model. This model *must* have the following inputs `input_ids (int32)`, `attention_mask (int32)`, `token_type_ids (int32)`. These are based on the input into BERT models.
+The CoreML embedder allows you to use a pre-compiled (`.mlmodelc`) file as an embedding model. This model *must* have the following inputs `input_ids (int32)`, `attention_mask (int32)`, `token_type_ids (int32)`. These are based on the input into BERT models.
 
 #### CoreML Model Configuration
 To configure the output of a CoreML model you *need* to provide a `config.json` file alongside your `.mlmodelc` file. You must also provide the `vocab.txt` for the model you are working with.
