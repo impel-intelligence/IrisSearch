@@ -8,5 +8,5 @@
 import Logging
 
 internal enum Log {
-    nonisolated static let logger = Logger(label: "com.tryminna.IrisSearch")
+    nonisolated static let logger = Logger(label: "com.tryminna.IrisSearch.main")
 }
