@@ -84,8 +84,14 @@ extension FileDigester {
     ///            failed.
     static func validateLocalURL(_ url: URL) throws {
         guard url.isFileURL else { throw DigestionError.notAFileURL }
-        guard FileManager.default.isReadableFile(atPath: url.path(percentEncoded: false)) else { throw DigestionError.fileNotReadable }
-        guard let fileType = UTType(filenameExtension: url.pathExtension) else { throw DigestionError.incorrectExtension }
-        guard fileTypes.contains(fileType) else { throw DigestionError.fileTypeNotValid(type: fileType)}
+        guard FileManager.default.isReadableFile(atPath: url.path(percentEncoded: false)) else {
+            throw DigestionError.fileNotReadable
+        }
+        guard let fileType = UTType(filenameExtension: url.pathExtension) else {
+            throw DigestionError.incorrectExtension
+        }
+        guard fileTypes.contains(where: { fileType.conforms(to: $0) }) else {
+            throw DigestionError.fileTypeNotValid(type: fileType)
+        }        
     }
 }
