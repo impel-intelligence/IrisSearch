@@ -428,7 +428,7 @@ extension IrisDB {
         let unicodeNormalizedQuery = query.text.precomposedStringWithCompatibilityMapping
         
         // Text index searching
-        let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
+        let textEmbedding = try await textEmbedder.embedQuery(content: unicodeNormalizedQuery).map({Float($0)})
         
         let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit, collection: uuid).filter { $0.distance > semanticCutoff }
         
@@ -530,7 +530,7 @@ extension IrisDB {
         
         // MARK: Searching
         // Text index searching
-        let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
+        let textEmbedding = try await textEmbedder.embedQuery(content: unicodeNormalizedQuery).map({Float($0)})
         
         let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit).filter { $0.distance > semanticCutoff }
        
