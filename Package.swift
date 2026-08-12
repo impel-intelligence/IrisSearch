@@ -18,7 +18,10 @@ let package = Package(
         
         // Embedding Providers
         .library(name: "CoreMLEmbedder", targets: ["CoreMLEmbedder"]),
-        .library(name: "AppleIntelligenceEmbedder", targets: ["AppleIntelligenceEmbedder"])
+        .library(name: "AppleIntelligenceEmbedder", targets: ["AppleIntelligenceEmbedder"]),
+
+        // Benchmarking
+        .executable(name: "IrisBenchmark", targets: ["IrisBenchmark"])
     ],
     dependencies: [
         .package(url: "https://github.com/impel-intelligence/SwiftFaiss", from: "0.4.1"),
@@ -27,6 +30,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/swiftlang/swift-markdown", from: "0.8.0"),
         .package(url: "https://github.com/krzyzanowskim/CryptoSwift", from: "1.10.0")
+        // Used only by the IrisBenchmark executable target.
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0")
     ],
     targets: [
         // Common
@@ -126,6 +131,22 @@ let package = Package(
             name: "AppleIntelligenceEmbedder",
             dependencies: ["IrisCommon"],
             path: "Sources/Embedder/AppleIntelligence",
+        ),
+
+        // MARK: Benchmarking
+        // A standalone driver rather than a test target: a full run ingests tens of thousands of
+        // documents over many minutes, which is not something `swift test` should ever do, and it
+        // needs to emit result artifacts that can be diffed between runs.
+        .executableTarget(
+            name: "IrisBenchmark",
+            dependencies: [
+                "IrisCommon",
+                "IrisSearch",
+                "Digester",
+                "AppleIntelligenceEmbedder",
+                "CoreMLEmbedder",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ]
         ),
     ]
 )
