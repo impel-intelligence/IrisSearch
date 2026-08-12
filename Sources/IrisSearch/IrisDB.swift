@@ -626,7 +626,7 @@ extension IrisDB {
 
         // Document Piece Database Search
         let syntacticTextDocumentPieces: [SearchableDocumentPiece] = (try await dbPool.read { db in
-            guard let pattern = FTS5Pattern(matchingAllTokensIn: unicodeNormalizedQuery) else {
+            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
                 Log.logger.warning("Could not create an FTS5 Pattern for \(unicodeNormalizedQuery)")
                 return []
             }
@@ -644,7 +644,7 @@ extension IrisDB {
         
         // Search documents by their title and description.
         let syntacticTextDocuments: [SearchableDocument] = (try await dbPool.read { db in
-            guard let pattern = FTS5Pattern(matchingAllTokensIn: unicodeNormalizedQuery) else {
+            guard let pattern = FTS5Pattern(matchingAnyTokenIn: unicodeNormalizedQuery) else {
                 Log.logger.warning("Could not create an FTS5 Pattern for \(unicodeNormalizedQuery)")
                 return []
             }
