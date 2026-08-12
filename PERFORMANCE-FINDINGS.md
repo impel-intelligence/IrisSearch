@@ -1,10 +1,50 @@
 # IrisSearch — bugs and scaling findings
 
-Compiled 2026-08-11 while building the `IrisBenchmark` executable. Every item below was found either
-by reading the code or by running the benchmark against a real corpus.
+Compiled 2026-08-11 while building the `IrisBenchmark` executable; revised 2026-08-12 after the first
+round of fixes landed. Every item below was found either by reading the code or by running the
+benchmark against a real corpus.
 
-**Nothing in this document has been fixed**, with one exception that is called out explicitly
-(finding 3, which had to be fixed before the benchmark could read Markdown at all).
+Findings keep their original numbers after they are closed, so that commit messages and notes
+referring to "finding 9" stay meaningful. **Numbering is therefore not contiguous** — closed findings
+are summarised in the table below and their detail has been deleted from the body.
+
+All line numbers are relative to `7899d23`. They were re-derived at the 2026-08-12 revision; the ones
+in the original compilation were taken before the fixes shifted `IrisDB.swift` and were wrong.
+
+## Closed
+
+| # | Finding | Fixed in | Residual |
+| --- | --- | --- | --- |
+| 1 | `search(within:)` selected `nItems` from a `Set`, discarding its own ranking | `663bf21` | None. `limitedPieceIDs` now comes from `rankedPieceIDs.prefix(nItems)`, which also resolves the `orderedByRank` sizing defect: ranks are `0..<nItems` by construction, so the `rank < orderedByRank.count` guard can no longer silently drop a result. No test asserts it. |
+| 3 | Markdown files could not be digested — `UTType(importedAs:)` resolved to `com.unknown.md` outside a process that declares the UTI | `776b2a7` | Open: `FactoryTests` still parameterises on `MarkdownDigester.fileTypes` itself (`Tests/DigesterTests/FactoryTests.swift:37`), so it compares the value against itself and cannot catch a regression. A test should resolve the type from a real `.md` path via `UTType(filenameExtension:)`. |
+| 4 | `validateLocalURL` matched types by equality while `DigesterFactory` matched by conformance | `663bf21` | None. `FileDigester.swift:89` now calls `isValidType(fileType)`. |
+| 9 | No index on `document_pieces(parentID)` | `663bf21` | None. Migration `Add Document Piece Parent ID Index` at `IrisDB.swift:119-121`. Measured effect below. |
+
+Finding 5 (the two search paths used different FTS5 semantics) was **changed, not closed** — the
+change fixed the divergence and bought recall at a real latency cost. It is still open, and is now
+the record of that trade.
+
+### What the `parentID` index actually bought
+
+Hash embedder both sides, so this isolates the database. Pre-fix is `BenchmarkResults/hash/`
+(`0509d05`), post-fix is `BenchmarkResults/fts-all/` (`663bf21`, identical FTS5 semantics, index
+present). Chunk counts differ slightly between the two runs because the padding differs; treat these
+as ratios, not exact deltas.
+
+| docs | in-document p50 pre | post | corpus-wide p50 pre | post |
+| --- | --- | --- | --- | --- |
+| 250 | 33.84 ms | 18.55 ms | 11.67 ms | 3.57 ms |
+| 1000 | 147.67 ms | 52.78 ms | 36.36 ms | 11.55 ms |
+
+Roughly 2.8× on in-document search and 3.1× on corpus-wide search at 1,000 documents. Corpus-wide
+search benefits because it hydrates each result document's pieces through the `parentID` association
+at `IrisDB.swift:688-691`.
+
+**In-document search is still not flat.** 18.55 → 52.78 ms is 2.8× growth for 4× the corpus, with p90
+at 786.90 ms. It searches one document; it should not care how many others exist. Roughly 1.22× of
+that is the benchmark sampling larger documents at the larger checkpoint (see finding 11); the rest is
+real. Finding 11 — hydrating the whole document to compute a count — is the remaining suspect and is
+the best-supported open performance item after finding 7.
 
 ## How these were found
 
@@ -14,7 +54,13 @@ by reading the code or by running the benchmark against a real corpus.
 | Build | release (`swift build -c release`) |
 | Corpus | 650 real documents / 86,142 chunks from ArXiv, MIT OCW, WikiBooks and RIT course material; padded to 2,000 documents / 285,080 chunks with documents recombined from real chunks |
 | Embedders | `bge_small_en_v1.5` via `CoreMLEmbedder` (d=384, the shipped model), and a zero-cost hash embedder (d=512) used to isolate database cost from model cost |
-| Artifacts | `BenchmarkResults/hash/`, `BenchmarkResults/bge/` |
+| Artifacts | `BenchmarkResults/hash/`, `BenchmarkResults/bge/`, `BenchmarkResults/fts-all/`, `BenchmarkResults/fts-any/` |
+
+**Measurement vintage matters.** `BenchmarkResults/hash/` and `BenchmarkResults/bge/` were both
+measured at `0509d05`, before any fix. Every table sourced from them is labelled **pre-fix** and is
+kept as the evidence that motivated the fix — do not quote it as current. `fts-all/` and `fts-any/`
+were measured at `663bf21` and `7899d23` respectively and are labelled **post-fix**; both used the
+hash embedder, so they say nothing about model cost or retrieval quality.
 
 ## Confidence labels
 
@@ -26,54 +72,9 @@ by reading the code or by running the benchmark against a real corpus.
 
 # Correctness and relevance
 
-## 1. `search(within:)` throws away its own ranking — Verified
-
-**Where:** `Sources/IrisSearch/IrisDB.swift:473-476`
-
-```swift
-// Any pieces that were actually surfaced by the piece searching
-let surfacedPieceIDs = Set(semanticTextPieces.map(\.id) + syntacticTextDocumentPieces.map { Int($0.id) })
-
-// Take the top n ranked pieces.
-let limitedPieceIDs = Array(surfacedPieceIDs.prefix(nItems))
-```
-
-`surfacedPieceIDs` is a `Set`. `Set.prefix(n)` returns `n` elements in the set's *hash order*, which is
-arbitrary and unrelated to relevance. The comment says "Take the top n ranked pieces", but
-`rankedPieceIDs` — computed immediately above at line 462 — is never consulted for this selection.
-
-The pieces that survive are then sorted by rank at lines 482-491, which makes the output *look*
-correctly ordered. It is a correctly ordered ranking of an arbitrary subset. The single most relevant
-piece in a document is dropped whenever it falls outside an arbitrary `nItems` slice of the candidate
-set.
-
-There is a second, compounding defect on line 482: `orderedByRank` is sized `limitedPieceIDs.count`,
-but ranks are positions in the full `rankedPieceIDs` list, so line 486's `rank < orderedByRank.count`
-guard silently discards any surviving piece whose rank exceeds the slice size. A call can therefore
-return fewer results than it selected.
-
-Note the corpus-wide `search(query:)` does **not** have this bug — line 644 uses
-`rankedDocumentIDs.prefix(nItems)`, which is a properly ordered `Array`.
-
-**Impact:** In-document search returns near-random relevance. This is a quality bug, not a speed bug,
-and no benchmark would have caught it.
-
-**Expected fix:** Select from the ranked array, then intersect with the surfaced set:
-
-```swift
-let surfacedPieceIDs = Set(semanticTextPieces.map(\.id) + syntacticTextDocumentPieces.map { Int($0.id) })
-let limitedPieceIDs = rankedPieceIDs.filter { surfacedPieceIDs.contains($0) }.prefix(nItems)
-```
-
-Then size `orderedByRank` by `limitedPieceIDs.count` and re-index ranks densely (`0..<count`) rather
-than reusing global rank positions. Add a test asserting that the top-ranked piece is always present
-in the result for `nItems >= 1`.
-
----
-
 ## 2. The BGE query prefix is never applied — Verified
 
-**Where:** `Sources/IrisSearch/IrisDB.swift:431` and `:533`
+**Where:** `Sources/IrisSearch/IrisDB.swift:435` and `:534`
 
 Both search paths embed the query with `embed(content:)`:
 
@@ -104,82 +105,64 @@ unaffected, so **no re-indexing is required**.
 
 ---
 
-## 3. Markdown files could not be digested — Verified, and FIXED
+## 5. FTS5 is now disjunctive everywhere, which bought recall at a large latency cost — Verified and Measured
 
-**Where:** `Sources/Digester/Implementations/MarkdownDigester.swift:20`
+**Where:** `Sources/IrisSearch/IrisDB.swift:447`, `:541`, `:559` — all three now use
+`FTS5Pattern(matchingAnyTokenIn:)`.
 
-```swift
-static let fileTypes: [UTType] = [UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)]
-```
+Originally the two search paths disagreed: in-document search was disjunctive (OR) and corpus-wide
+search was conjunctive (AND), so the same query text behaved differently depending on scope, and a
+corpus-wide search for a full sentence typically matched nothing in FTS5 and was carried entirely by
+the vector index. `7899d23` resolved the divergence by making everything OR.
 
-`UTType(importedAs:conformingTo:)` only resolves to the real identifier when the running process
-declares or imports that UTI in its `Info.plist`. In a process that does not — any command line tool,
-and any test runner without the declaration — it silently returns a generated `com.unknown.md` type.
-Reproduced directly:
+**That resolved the inconsistency and did not settle the underlying question.** The A/B below is the
+evidence, and it cuts both ways.
 
-```
-declared: net.daringfireball.markdown  isDeclared=true
-imported: com.unknown.md               isDeclared=true
-equal: false
-```
+`BenchmarkResults/fts-all/` is `663bf21` (corpus-wide AND) against `BenchmarkResults/fts-any/` at
+`7899d23` (OR). Hash embedder, identical corpus and query suite, `nItems = 10`, two checkpoints each.
 
-Consequence chain: `DigesterFactory` filters by conformance, and declared-Markdown does not conform
-to `com.unknown.md`, so `MarkdownDigester` is excluded; `TXTDigester` wins instead; then
-`TXTDigester.validateLocalURL` rejects the file because Markdown is not in its `fileTypes`. **All 276
-Markdown files in the test corpus failed to digest.**
+| docs | variant | overall p50 | p90 | p99 | mean results returned |
+| --- | --- | --- | --- | --- | --- |
+| 250 | ALL (AND) | 3.57 | 5.74 | 9.95 | 3.14 |
+| 250 | ANY (OR) | 9.09 | 65.11 | 79.70 | **8.10** |
+| 1000 | ALL (AND) | 11.55 | 32.28 | 41.87 | 5.55 |
+| 1000 | ANY (OR) | 25.86 | 392.73 | 472.98 | **9.69** |
 
-The existing tests do not catch this because `FactoryTests` passes `MarkdownDigester.fileTypes` as its
-own argument, comparing the broken value against itself.
+p50 by query category:
 
-**Fix applied** (prefer the system-declared type, fall back to the import):
+| category | ALL @250 | ANY @250 | ALL @1000 | ANY @1000 | factor @1000 |
+| --- | --- | --- | --- | --- | --- |
+| rareTerm | 2.95 | 2.96 | 9.03 | 8.70 | 0.96× |
+| commonTerm | 5.14 | 5.36 | 17.18 | 15.77 | 0.92× |
+| phrase | 3.54 | 9.75 | 11.31 | 27.81 | 2.5× |
+| question | 3.14 | 43.36 | 8.15 | **247.06** | 30× |
+| sentence | 3.93 | 65.96 | 33.16 | **403.34** | 12× |
 
-```swift
-static let fileTypes: [UTType] = [
-    UTType("net.daringfireball.markdown")
-        ?? UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)
-]
-```
+The recall win is real: mean results returned went 5.55 → 9.69 of a requested 10 at 1,000 documents.
+Reproduced directly on `sonnetSearch` (`Tests/IrisSearchTests/SearchTests.swift`) by reverting
+`IrisDB.swift` to `663bf21` and running it — under ALL it fails with `(documents.count → 0) == (kItems
+→ 10)`, a total recall failure over 154 sonnets; under ANY it passes. Single-token queries
+(`rareTerm`, `commonTerm`) are unaffected or marginally faster, so the regression is confined to
+multi-token queries.
 
-**Still worth doing:** a regression test that resolves the type from a real `.md` file path
-(`UTType(filenameExtension:)`) rather than from `fileTypes`, so this cannot silently regress.
+The cost is equally real: multi-token natural-language queries got 12-30× slower, and 403 ms p50 for
+a sentence query at 1,000 documents is already user-visible. It scales with corpus size, so 2,000
+documents is roughly 800 ms.
 
----
+**Cause:** `.limit(searchLimit)` bounds rows *returned*, not rows *scanned*. FTS5 must BM25-score
+every matching row to order them, and OR over a ~30-token sentence matches an enormous fraction of the
+chunk table. This also means widening the candidate pool (finding 10) is now actively harmful on
+exactly the queries that are already slow.
 
-## 4. `validateLocalURL` and `DigesterFactory` disagree on type matching — Verified
+**Expected fix:** AND first, fall back to OR when the conjunctive query yields too few rows. That
+keeps AND's latency in the common case and OR's recall when it matters. Cap query tokens by IDF —
+keeping the most selective N terms — as a complement or an alternative. Whichever is chosen, re-run
+this A/B; it is cheap (two checkpoints, hash embedder) and it is the only thing standing between an
+opinion and a decision.
 
-**Where:** `Sources/Digester/FileDigester.swift` (`validateLocalURL`) vs
-`Sources/Digester/DigesterFactory.swift` (`digester(for:)`)
-
-The factory selects a digester by **conformance** (`isValidType` → `type.conforms(to:)`), but each
-digester then validates the file by **exact equality** (`fileTypes.contains(fileType)`). A type can
-therefore pass selection and fail validation, which is exactly the failure mode in finding 3.
-
-**Impact:** Any subtype of a supported type is routed to a digester that then rejects it. The
-practical breakage is fixed by finding 3, but the inconsistency remains and will produce the same
-class of bug for the next subtype anyone adds.
-
-**Expected fix:** Make `validateLocalURL` use the same conformance check the factory uses
-(`Self.isValidType(fileType)`). This is strictly more permissive; audit that no digester relies on
-the stricter behaviour for safety.
-
----
-
-## 5. The two search paths use different full-text semantics — Verified
-
-**Where:** `IrisDB.swift:443` uses `FTS5Pattern(matchingAnyTokenIn:)` (OR), `IrisDB.swift:546` and
-`:564` use `FTS5Pattern(matchingAllTokensIn:)` (AND).
-
-Searching inside a document is disjunctive; searching the corpus is conjunctive. The same query text
-therefore behaves differently depending on scope — corpus-wide search of a full sentence typically
-matches nothing in FTS5 and is carried entirely by the vector index.
-
-**Impact:** Surprising and undocumented behavioural difference. Benchmark data shows the cost
-difference clearly: at 2,000 documents, sentence queries ran 154.46 ms p50 against 68.69 ms for a rare
-term.
-
-**Expected fix:** Decide deliberately and document it. If conjunctive is right, long natural-language
-queries need a fallback (drop to OR when AND yields zero rows), or recall will keep depending on the
-vector half alone.
+**Note on prior write-ups:** an earlier summary of this A/B compared ALL at 250 documents against ANY
+at 1,000 and reported 78-103× regressions. That comparison was invalid. The correct same-checkpoint
+factors are in the table above.
 
 ---
 
@@ -233,7 +216,8 @@ This is a prerequisite for findings 7 and 8.
 `addDocument` calls `addDocumentToGlobalIndex` for every document, which calls `add(pieces:to:.global)`,
 which ends in `saveToFile`. `updateDocument` and `deleteDocument` do the same.
 
-Measured, at 384 dimensions, ingesting 2,000 documents:
+Measured **pre-fix** (`0509d05`), at 384 dimensions, ingesting 2,000 documents. `FaissIndex.swift` has
+not been touched since, so this is still current:
 
 | documents | global index | cumulative bytes rewritten |
 | --- | --- | --- |
@@ -265,7 +249,7 @@ Consider a `createDocuments(_:)` batch API for imports.
 let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .innerProduct)
 ```
 
-`FlatIndex` is brute force. Measured with the shipped BGE model:
+`FlatIndex` is brute force. Measured **pre-fix** (`0509d05`) with the shipped BGE model:
 
 | documents | chunks | search p50 | p90 | p99 |
 | --- | --- | --- | --- | --- |
@@ -278,6 +262,13 @@ let coreIndex = try FlatIndex(d: embeddingProvider.dimension, metricType: .inner
 ~5.4 ms, so it falls from 27% of search latency at 100 documents to 7.6% at 2,000. **The model is not
 the bottleneck; the index is.**
 
+**These absolute numbers are stale and overstate the cost.** They include the unindexed `parentID`
+hydration that closed finding 9 removed; at 1,000 documents the same query suite dropped from 36.36 ms
+to 11.55 ms on the hash embedder once the index existed. The *shape* is unchanged and is what matters
+here — vector scan cost is linear in vector count either way, and removing a competing linear term
+only makes the FAISS scan a larger share of what remains. Re-measure with BGE before quoting a
+latency at scale.
+
 **Impact:** Linear extrapolation puts search in the hundreds of milliseconds to seconds at 10k-50k
 documents. Memory is the harder wall: full-precision storage at 50k documents is ~11 GB resident.
 
@@ -289,38 +280,9 @@ results as ground truth *now*, while exhaustive search is still cheap.
 
 ---
 
-## 9. The schema has no secondary indexes — Verified and Measured
-
-**Where:** `Sources/IrisSearch/IrisDB.swift:67-119`. `grep` for `create(index`/`indexed()` returns
-nothing. The `table.foreignKey(["parentID"], references: "documents", onDelete: .cascade)` on line 92
-does **not** create an index.
-
-Every `readDocument`, `readPiece` and `search(within:)` issues
-`SELECT … FROM document_pieces WHERE parentID = ?` against an unindexed column.
-
-Measured `search(within:)` p50:
-
-| documents | in-document search p50 |
-| --- | --- |
-| 100 | 20.40 ms |
-| 500 | 83.15 ms |
-| 1000 | 127.83 ms |
-| 2000 | **330.95 ms** |
-
-16× growth for a 20× corpus. In-document search should be **flat** — it searches one document. The
-per-document FAISS index is far too small to explain this; the table scan is.
-
-**Impact:** The worst scaling behaviour measured anywhere in the system, on the cheapest possible fix.
-
-**Expected fix:** `CREATE INDEX idx_document_pieces_parentID ON document_pieces(parentID)` as a new
-migration. Note the index **must be named** — `CREATE INDEX ON …` is invalid SQLite and will throw on
-every database open. Prefer GRDB's `db.create(index:on:columns:)` over raw SQL.
-
----
-
 ## 10. Every corpus-wide search counts the whole piece table — Verified
 
-**Where:** `Sources/IrisSearch/IrisDB.swift:520-522`
+**Where:** `Sources/IrisSearch/IrisDB.swift:521-523`
 
 ```swift
 let maximumPieces = try await dbPool.read { db in
@@ -328,7 +290,7 @@ let maximumPieces = try await dbPool.read { db in
 }
 ```
 
-This runs on every search, solely to clamp `searchLimit` on line 527. It is an O(rows) b-tree scan
+This runs on every search, solely to clamp `searchLimit` on line 528. It is an O(rows) b-tree scan
 over a table that reached 227.80 MiB at 2,000 documents, and it grows linearly exactly like the FAISS
 scan — meaning the measured search curve conflates two independent linear terms.
 
@@ -336,11 +298,17 @@ scan — meaning the measured search curve conflates two independent linear term
 the clamp: FAISS already returns fewer than `k` results when the index is small, and the `-1` labels
 are filtered at `FaissIndex.swift:202`.
 
+Note that dropping the clamp is not purely an optimisation. The same count backs
+`guard maximumPieces > 0 else { throw IrisDBError.noDocuments }` on line 525, so removing it changes
+the empty-database path from a thrown error to an empty result — an API behaviour change. Caching the
+count preserves the semantics; removing the clamp does not. Note also that finding 5 makes *widening*
+the pool actively harmful under OR.
+
 ---
 
 ## 11. `search(within:)` hydrates the entire document to compute a count — Verified
 
-**Where:** `Sources/IrisSearch/IrisDB.swift:422-426`
+**Where:** `Sources/IrisSearch/IrisDB.swift:426-430`
 
 ```swift
 let document = try await readDocument(uuid: uuid)
@@ -350,16 +318,31 @@ let searchLimit = (nItems * 2).clamped(to: 0...document.pieces.count)
 
 `readDocument(uuid:)` loads every piece including full `textContent` and every `dataContent` blob. For
 the corpus's largest document (2,738 chunks) that is megabytes of hydration before the search begins,
-mostly to obtain `pieces.count`. Compounded by finding 9's missing index.
+mostly to obtain `pieces.count`.
+
+**This is the leading remaining explanation for in-document search not being flat.** The `parentID`
+index (closed finding 9) cut in-document p50 by ~2.8× but did not flatten the curve: 18.55 ms at 250
+documents against 52.78 ms at 1,000, p90 786.90 ms. An index makes the row *lookup* cheap; it does
+nothing about the volume of `textContent` and `dataContent` deserialized once the rows are found.
+
+Part of that growth is an artefact — `measureWithinDocumentSearch` samples a random document per query
+(`Sources/IrisBenchmark/Benchmarks/SearchBenchmark.swift:143`), and the padded corpus averages 115
+chunks per document at the 250 checkpoint against 141 at 1,000, so the documents being searched are
+~1.22× larger. That does not account for 2.8×. Something still scales with corpus size, and hydration
+volume is the best candidate.
 
 **Expected fix:** `SELECT COUNT(*) … WHERE parentID = ?` for the clamp, and fetch the document row
-without its pieces. The pieces that matter are fetched separately at line 478 anyway.
+without its pieces. The pieces that matter are fetched separately at line 479 anyway. Measure
+in-document p50/p90 at 250 and 1,000 documents before and after; if the curve flattens, this was the
+whole story.
 
 ---
 
 ## 12. One FAISS index file per document — Verified and Measured
 
 **Where:** `Sources/IrisSearch/FaissIndex.swift:16-27`, `:132-141`
+
+Measured pre-fix; `FaissIndex.swift` is unchanged, so these still hold:
 
 | documents | per-document indices | files |
 | --- | --- | --- |
@@ -378,7 +361,8 @@ even the worst case is low single-digit milliseconds, and it is *exact*. This al
 
 ## 13. Cold start is linear in corpus size — Measured
 
-First search against a freshly opened `IrisDB`, which deserializes the whole global index:
+First search against a freshly opened `IrisDB`, which deserializes the whole global index. Measured
+pre-fix, but cold start is index deserialization and none of the fixes touch it:
 
 | documents | cold search (BGE, d=384) | cold search (hash, d=512) |
 | --- | --- | --- |
@@ -442,7 +426,7 @@ a session is retained for the life of the process, with no eviction.
 
 ## 16. `train()` is called on every add with a single document's vectors — Verified
 
-**Where:** `Sources/IrisSearch/FaissIndex.swift:167-170`
+**Where:** `Sources/IrisSearch/FaissIndex.swift:168-170`
 
 ```swift
 if !index.isTrained {
@@ -469,7 +453,7 @@ try FileManager.default.removeItem(at: indexURL)
 
 Throws if the per-document index is missing, which aborts the delete *before*
 `removeDocumentFromGlobalIndex` runs — leaving the document's vectors orphaned in the global index
-while its SQLite rows are already gone (deleted by the caller at `IrisDB.swift:379-381`).
+while its SQLite rows are already gone (deleted by the caller at `IrisDB.swift:383-385`).
 
 **Impact:** A partial delete that leaves the index inconsistent with the database. Reachable if a
 prior create failed after the SQLite insert.
@@ -516,16 +500,17 @@ changing the fork.
 
 # Suggested order
 
-Ordered by value per unit of risk. Items 1-4 do not change search results; items 5-6 do.
+Ordered by value per unit of risk. Items 1, 2 and 6 change what search returns and need a relevance
+or recall check; items 3, 4 and 5 are pure latency and durability work that leaves results identical.
 
-| # | Finding | Why first |
+| # | Finding | Why here |
 | --- | --- | --- |
-| 1 | 9 — `parentID` index | One migration. Worst measured scaling in the system. |
+| 1 | 5 — AND-first with OR fallback | The current OR-everywhere behaviour is an accepted 12-30× latency regression on natural-language queries that nobody deliberately chose. Decide it, with the A/B rerun as the evidence. |
 | 2 | 2 — `embedQuery` | One line. Improves relevance app-wide. Needs a relevance check, no re-indexing. |
-| 3 | 1 — `search(within:)` ranking | Small, self-contained, and currently returns near-random relevance. |
+| 3 | 11 — stop hydrating the document | Small and self-contained, and the best remaining explanation for in-document search scaling with corpus size after the `parentID` index. Finding 10 is the same shape and can ride along. |
 | 4 | 6 → 7 → 12 | Vectors in SQLite unlocks batched flush and deleting per-document indices. Removes the quadratic intake term. |
 | 5 | 13 — mmap cold start | Depends on finding 19 being resolved. |
 | 6 | 8 — approximate index | Largest win, largest risk. Needs a recall harness built first — capture flat-index ground truth *before* migrating. |
 
-Findings 10, 11, 15, 16, 17, 18 are small and can ride along with whatever touches their file.
-Finding 14 needs reproducing in isolation and is independent of everything else.
+Findings 15, 16, 17, 18 are small and can ride along with whatever touches their file. Finding 14
+needs reproducing in isolation and is independent of everything else.
