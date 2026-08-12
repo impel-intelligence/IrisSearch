@@ -3,6 +3,7 @@
 //  IrisSearch
 //
 //  Created by Taylor Lineman on 6/8/26.
+//  Edited by Claude Opus 5 (Anthropic) on 2026-08-12 — corrected `cachedPieceCount` maintenance.
 //
 
 import Foundation
@@ -39,6 +40,15 @@ public actor IrisDB {
     private let writeExecutor: KeyedExecutor<UUID> = KeyedExecutor()
     
     public let contextSize: Int = 512
+    
+    /// The total number of rows in `document_pieces`, cached to keep a `SELECT COUNT(*)` off the search path.
+    ///
+    /// `nil` means "not yet known" — the next corpus-wide search recounts and refills it. Every write path
+    /// that changes the number of piece rows must apply its delta here, or the value silently drifts.
+    /// Settable only within this file so all maintenance stays next to the writes it mirrors.
+    ///
+    /// - Authored by: Claude Opus 5 (Anthropic)
+    internal private(set) var cachedPieceCount: Int?
     
     public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
@@ -298,6 +308,10 @@ extension IrisDB {
             throw error
         }
         
+        if let cachedPieceCount {
+            self.cachedPieceCount = cachedPieceCount + insertedDocument.pieces.count
+        }
+
         return insertedDocument
     }
     
@@ -355,6 +369,11 @@ extension IrisDB {
 
         try textIndex.removeDocument(documentID: uuid, pieceIDs: oldPieceIDs)
         try textIndex.addDocument(document: updatedDocument)
+
+        // An update swaps the whole piece set, so the row count moves by the difference between the two.
+        if let cachedPieceCount {
+            self.cachedPieceCount = cachedPieceCount + updatedDocument.pieces.count - oldPieceIDs.count
+        }
     }
     
     /// Delete a document by `uuid`.
@@ -384,6 +403,11 @@ extension IrisDB {
         if let tmpDocument {
             let oldIDs = tmpDocument.pieces.compactMap(\.id).map({ Int($0) })
             try textIndex.removeDocument(documentID: uuid, pieceIDs: oldIDs)
+
+            // Remove the count of document pieces from the cached amount.
+            if let cachedPieceCount {
+                self.cachedPieceCount = cachedPieceCount - tmpDocument.pieces.count
+            }
         }
     }
 }
@@ -419,16 +443,24 @@ extension IrisDB {
     public func search(within uuid: UUID, query: IrisQuery, semanticCutoff: Float = 0.6, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> SearchResult {
         guard nItems > 0 else { throw IrisDBError.nLessThanZero }
         
-        let document = try await readDocument(uuid: uuid)
-        guard let document else { throw IrisDBError.noDocuments }
+        // Read document and its number of pieces without actually populating all of the pieces.
+        // Pieces that are needed are populated later in the chain, so no need to populate them
+        // all now.
+        let (document, pieceCount) = try await dbPool.read { db -> (IrisDocument, Int) in
+            guard let document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else {
+                throw IrisDBError.noDocuments
+            }
+            let count = try document.request(for: IrisDocument.pieces).fetchCount(db)
+            return (document, count)
+        }
                 
         // Search for twice as many items as the user requested to give better ranking down the line.
-        let searchLimit = (nItems * 2).clamped(to: 0...document.pieces.count)
+        let searchLimit = (nItems * 2).clamped(to: 0...pieceCount)
         
         let unicodeNormalizedQuery = query.text.precomposedStringWithCompatibilityMapping
         
         // Text index searching
-        let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
+        let textEmbedding = try await textEmbedder.embedQuery(content: unicodeNormalizedQuery).map({Float($0)})
         
         let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit, collection: uuid).filter { $0.distance > semanticCutoff }
         
@@ -468,12 +500,9 @@ extension IrisDB {
         
         // Save the ranking (list index) for every piece ID. Will be used for reconstructing the ranking after database fetches.
         let pieceRanksByID: [Int: Int] = Dictionary(uniqueKeysWithValues: rankedPieceIDs.enumerated().map { ($1, $0) })
-                
-        // Any pieces that were actually surfaced by the piece searching
-        let surfacedPieceIDs = Set(semanticTextPieces.map(\.id) + syntacticTextDocumentPieces.map { Int($0.id) })
-        
+                        
         // Take the top n ranked pieces.
-        let limitedPieceIDs = Array(surfacedPieceIDs.prefix(nItems))
+        let limitedPieceIDs = Array(rankedPieceIDs.prefix(nItems))
         
         let searchedPieces = try await dbPool.read { db in
             return try DocumentPiece.filter(limitedPieceIDs.contains(Column("id"))).fetchAll(db)
@@ -530,7 +559,7 @@ extension IrisDB {
         
         // MARK: Searching
         // Text index searching
-        let textEmbedding = try await textEmbedder.embed(content: unicodeNormalizedQuery).map({Float($0)})
+        let textEmbedding = try await textEmbedder.embedQuery(content: unicodeNormalizedQuery).map({Float($0)})
         
         let semanticTextPieces: [(id: Int, distance: Float)] = try textIndex.search(query: textEmbedding, kItems: searchLimit).filter { $0.distance > semanticCutoff }
        

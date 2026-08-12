@@ -80,7 +80,7 @@ class IrisDB_FaissIndexTests {
         let localIndexPath = FaissIndex.IndexLocation.document(uuid: uuid).filePath(in: directories.textIndexURL)
         #expect(FileManager.default.fileExists(atPath: localIndexPath.path()) == true, "The local index should still exist after an update.")
 
-        let localIndex = try FlatIndex.from(localIndexPath.path())
+        let localIndex = try IDMap.from(localIndexPath.path())
         #expect(localIndex.count == newChunks.count, "The local index should hold one vector per supplied chunk of the new content.")
     }
 
