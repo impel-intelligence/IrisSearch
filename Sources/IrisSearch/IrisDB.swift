@@ -136,6 +136,10 @@ public actor IrisDB {
             }
         }
         
+        migrator.registerMigration("Add Document Piece Parent ID Index") { db in
+            try db.create(indexOn: DocumentPiece.databaseTableName, columns: ["parentID"])
+        }
+        
         try migrator.migrate(dbPool)
     }
     
