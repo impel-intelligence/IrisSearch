@@ -13,7 +13,7 @@ Read §1 and §6 first. Everything else is mechanical; those two are where the c
 | Type | File | Responsibility |
 | --- | --- | --- |
 | `MappedRegion` | `Vector Index/Accelerate/MappedRegion.swift` | One refcounted read-only `mmap`. Never remapped in place. |
-| `Durability` | `Vector Index/Accelerate/Durability.swift` | `barrier()`, `fullSync()`, `syncDirectory()` |
+| `Durability` | `Vector Index/Accelerate/Durability.swift` | `sync()`, `fullSync()`, `syncDirectory()` |
 | `VectorFile` | `Vector Index/Accelerate/VectorFile.swift` | `[capacity × d]` float32 matrix |
 | `SlotMapFile` | `Vector Index/Accelerate/SlotMapFile.swift` | slot → piece rowid; **owns the authoritative `slotCount`** |
 | `DocumentLogFile` | `Vector Index/Accelerate/DocumentLogFile.swift` | append-only log of 64-byte document records |
@@ -124,36 +124,64 @@ VectorFile.headerSize = 4096
   0   magic       "IRIS"  (4 bytes, literal 0x49 0x52 0x49 0x53)
   4   version     u8 + 3 pad
   8   dimensions  u64
-  16  capacity    u64          // NOT authoritative for count — slots only
-  24  crc32       u32 + 4 pad  // over the header; whole-file CRC optional, see §14
-  32… reserved, zeroed
+  16  generation  u64          // must match the sibling files
+  24… reserved, zeroed
   4096 vectors: capacity × d × 4, row-major.  Slot i at 4096 + i*d*4
+       capacity is DERIVED: (fileSize - 4096) / (d * 4). Write-once header, so no CRC.
 
 // map.bin — random access at k offsets, never streamed, so one cache line of header is enough.
 SlotMapFile.headerSize = 64
   0   magic       "IMAP"
   4   version     u8 + 3 pad
-  8   slotCount   u64   ← THE AUTHORITATIVE COUNT AND THE COMMIT POINT
-  16  deadCount   u64
-  24  capacity    u64
-  32  generation  u64
-  40  crc32       u32 + 4 pad
-  48… reserved
+  8   slotCount     u64   ← THE AUTHORITATIVE COUNT AND THE COMMIT POINT
+  16  generation    u64
+  24  cleanShutdown u8 + 3 pad
+  28  crc32         u32   // over bytes 0..<28
+  32… reserved, zeroed
   64  entries: capacity × u64.  UInt64.max = tombstone.
+      capacity is DERIVED: (fileSize - 64) / 8.
+      deadCount is DERIVED: counted during the load pass, which already touches every entry.
+      THE ONLY HEADER REWRITTEN IN NORMAL OPERATION — hence the only one carrying a CRC.
 
-// documents.bin — append-only log. 64-byte records: 4096/64 = 64 per page, so none straddle.
+// documents.bin — append-only log. Read once at open, appended thereafter. NEVER mmap'd,
+// so it has no capacity and is never pre-grown. Header is write-once, so no CRC.
 DocumentLogFile.headerSize = 64, recordSize = 64
-  record:
+  header:
+    0   magic       "IDOC"
+    4   version     u8 + 3 pad
+    8   generation  u64
+    16… reserved, zeroed
+    64  records begin.  recordCount is DERIVED: (fileSize - 64) / 64.
+
+  record (64 B — sized so none straddles a 4096 B page, which bounds a torn
+          append to exactly one record for the CRC to catch):
     0   uuid        16 bytes
     16  documentID  u64      // SQLite rowid, equals document_pieces.parentID
     24  slotStart   u64
-    32  slotCount   u32      // EMBEDDED slots — see §7, not document.pieces.count
-    36  pieceCount  u32      // total pieces, for the slotCount <= pieceCount assertion
+    32  slotEnd     u64      // EXCLUSIVE. Range is [slotStart, slotEnd).
     40  seq         u64      // monotonic; makes "last record wins" well-defined
-    48  flags       u32      // bit 0 = live
+    48  flags       u32      // bit 0 = live. See below — this is not redundant with an empty range.
     52  crc32       u32      // over bytes 0..<52
     56  reserved    8 bytes
 ```
+
+**Why `slotEnd` and not `slotCount`.** Validation runs on untrusted bytes, and `start + count <= slotCount`
+can overflow — in Swift that *traps*, turning a corrupt record into a crash during recovery. `start <= end
+&& end <= slotCount` is two comparisons with no arithmetic at all. The consumers prefer it too: every use is
+a slice, and `start ..< end` is already a `Range` where `start ..< start + count` repeats the addition at
+every call site.
+
+**Why `flags` is not redundant with an empty range.** It is tempting to let `slotStart == slotEnd` mean
+deleted. It cannot, because a live document can legitimately own zero slots — `add(pieces:)` skips pieces
+with empty embeddings, so an image-only document embeds nothing. Without a flag, reconcile (§6) sees that
+document in SQLite but not live in the log, queues it for re-index, gets zero vectors again, and repeats
+that on **every subsequent open** — an unbounded re-embed loop for image-only documents. The flag is what
+separates "deleted" from "live with nothing embeddable."
+
+**There is no `pieceCount`.** An earlier draft stored it to assert `slotCount <= pieceCount` as a defence
+against taking the count from `document.pieces.count`. That assertion cannot catch that bug: if you made
+the mistake, the two values are equal and the check passes. It also duplicates something SQLite already
+owns. The real defence is structural — see §7.
 
 `UInt64.max` is safe as a tombstone: piece rowids are `INTEGER PRIMARY KEY AUTOINCREMENT`, so always positive and **never reused**. Preserve that property — it is what stops a leaked map entry from ever aliasing a future piece.
 
@@ -201,20 +229,29 @@ func open(root, dimensions, dbPool) throws {
     guard generation.vectors.dimensions == dimensions else { throw .dimensionMismatch }   // model changed
     guard generation.map.headerCRCValid else { throw .corrupt }
 
-    // Capacities can diverge if a crash landed between the two ftruncates. Take the min, re-grow.
+    // Capacity is derived from file length in both files — neither stores it, so they cannot
+    // disagree about a number neither one holds. They CAN have different lengths if a crash
+    // landed between the two ftruncates, so take the min and re-grow.
     let capacity = min(generation.vectors.derivedCapacity, generation.map.derivedCapacity)
     try growBoth(to: capacity)
 
-    durableSlotCount = generation.map.slotCount
+    // Clamp rather than trust. A torn header write can yield a garbage slotCount; if it reads
+    // large, an unclamped scan runs off the end of the mapping. This is the check that actually
+    // protects you — the header CRC protects your ability to trust `cleanShutdown`.
+    durableSlotCount = min(generation.map.slotCount, capacity)
+    // deadCount is not stored. Count tombstones while loading the entries — that pass already
+    // touches every one of them, so this is free, and it cannot inherit drift from a previous run.
     pendingSlotCount = durableSlotCount
-    precondition(durableSlotCount <= capacity)
+
+    let wasClean = generation.map.cleanShutdown
+    try generation.map.clearCleanShutdown()   // set again only on an orderly close
 
     // --- pass 1: validate each record on its own merits ---
     var valid: [Record] = []
     for record in generation.documents.records() {
         guard record.crcValid else { continue }                            // torn append
-        guard record.slotStart + UInt64(record.slotCount) <= durableSlotCount else { continue }
-        guard record.slotCount <= record.pieceCount else { continue }
+        guard record.slotStart <= record.slotEnd else { continue }        // no arithmetic on
+        guard record.slotEnd <= durableSlotCount else { continue }        // untrusted bytes
         valid.append(record)
     }
     truncatePartialTrailingRecord(generation.documents)   // file length not a multiple of 64
@@ -260,11 +297,13 @@ At 50k documents this is one `SELECT` and a set difference.
 
 Called by `IrisDB` *after* the SQLite transaction has committed, so `piece.id` is populated.
 
-**The slot count comes from this routine, never from `document.pieces.count`.** `add(pieces:)` skips pieces with empty embeddings, and image pieces have empty embeddings. Record a 10-piece document with `slotCount = 10` when only 7 were embedded, and `search(within:)` scans three slots belonging to the *next* document and returns another document's text inside this document's `SearchResult`. Every value involved is structurally legal, so no validation catches it.
+**The range comes from this routine, never from `document.pieces.count`.** `add(pieces:)` skips pieces with empty embeddings, and image pieces have empty embeddings. Record a 10-piece document as owning 10 slots when only 7 were embedded, and `search(within:)` scans three slots belonging to the *next* document and returns another document's text inside this document's `SearchResult`. Every value involved is structurally legal, so no validation catches it — and no stored invariant can, either, because the wrong value equals the piece count exactly.
+
+**The defence is structural, not an assertion.** Have the write routine *return the range it wrote*, and have the record initialiser take that range rather than taking an `IrisDocument`. Then there is no parameter for `pieces.count` to be passed into and the mistake is unrepresentable. Back it with one test: index a document containing image pieces, index a second, and assert the second's range begins exactly where the first ended and that `search(within:)` on the first never returns a piece belonging to the second.
 
 ```
 func addDocument(document: IrisDocument) throws {   // synchronous. no await, anywhere.
-    // 1. Collect only what is actually embeddable. THIS defines slotCount.
+    // 1. Collect only what is actually embeddable. THIS defines the range.
     var vectors: [[Float]] = []
     var ids: [UInt64] = []
     for piece in document.pieces where !piece.embeddings.isEmpty {
@@ -276,36 +315,37 @@ func addDocument(document: IrisDocument) throws {   // synchronous. no await, an
                                                            // which outranks every negative cosine
         vectors.append(v); ids.append(UInt64(pieceID))
     }
-    let n = vectors.count                      // ← the real slot count
-    if n == 0 { return }                       // image-only document; nothing to index
+    let n = vectors.count
+    // NOTE: no early return when n == 0. An image-only document owns an EMPTY range and is still
+    // LIVE. Skip the record and reconcile (§6) sees it in SQLite but not in the log, queues it for
+    // re-index, gets zero vectors again, and repeats on every subsequent open — forever.
 
     // 2. Reserve. Synchronous, so no other writer can observe the same start.
     let start = pendingSlotCount
     try faultInjector?(.afterReserve)
 
     // 3. Grow. map.bin FIRST — it is tiny, and a crash between the two ftruncates must never
-    //    leave the map smaller than the vectors file.
-    if start + n > generation.capacity {
-        let newCapacity = max(start + n, generation.capacity * 2)
+    //    leave the map smaller than the vectors file. Capacity is derived from file length.
+    if start + n > generation.derivedCapacity {
+        let newCapacity = max(start + n, generation.derivedCapacity * 2)
         try generation.map.grow(to: newCapacity)          // ftruncate + republish MappedRegion
         try generation.vectors.grow(to: newCapacity)
     }
 
-    // 4. Write payload. pwrite to the fd; the mapping stays read-only.
-    try generation.vectors.write(vectors, atSlot: start)
-    try faultInjector?(.afterVectorWrite)
-    try generation.map.write(ids, atSlot: start)
+    // 4. Write payload. pwrite to the fd; the mapping stays read-only. This RETURNS the range it
+    //    wrote — the record is built from the return value, never from the document. That is what
+    //    makes the pieces.count mistake unrepresentable rather than merely asserted against.
+    let slots: Range<UInt64> = try generation.writePayload(vectors: vectors, ids: ids, at: start)
     try faultInjector?(.afterMapWrite)
 
-    // 5. Append the document record.
-    let record = Record(uuid: document.uuid, documentID: document.id, slotStart: start,
-                        slotCount: n, pieceCount: document.pieces.count,
-                        seq: nextSeq, live: true)
+    // 5. Append the document record, built from `slots`.
+    let record = Record(uuid: document.uuid, documentID: document.id,
+                        slots: slots, seq: nextSeq, live: true)
     try generation.documents.append(record)
     nextSeq += 1
 
     // 6. Publish in memory. Readers see it now; durability comes at flush.
-    pendingSlotCount = start + UInt64(n)
+    pendingSlotCount = slots.upperBound
     ranges[document.uuid] = DocumentRange(record)
     appendsSinceFlush += 1
 
@@ -350,16 +390,19 @@ func removeDocument(documentID uuid: UUID) throws {
     guard let range = ranges[uuid] else { return }   // already gone; idempotent
 
     // Contiguity is why this is one write instead of N lookups.
-    try generation.map.tombstone(range.slotStart ..< range.slotStart + range.slotCount)
+    try generation.map.tombstone(range)                  // range is already [start, end)
     try generation.documents.append(Record(uuid: uuid, ..., seq: nextSeq, live: false))
     nextSeq += 1
-    generation.map.deadCount += range.slotCount
+    generation.map.deadCount += range.countOfLive   // count what was LIVE, not range.count —
+                                                    // an unconditional += double-counts a repeated
+                                                    // tombstone (reconcile, or a retried delete)
     ranges[uuid] = nil
 
     try flush()
 
     // vectors.bin is NOT touched. ~1 KB written instead of a 289 MB rewrite.
-    if Double(deadCount) / Double(pendingSlotCount) > 0.25 { scheduleCompaction() }
+    // Guard the divisor: 0/0 is NaN, and NaN silently fails every comparison.
+    if pendingSlotCount > 0, Double(deadCount) / Double(pendingSlotCount) > 0.25 { scheduleCompaction() }
 }
 ```
 
@@ -439,7 +482,7 @@ Filtering tombstones *after* selecting the top k is the trap: delete every docum
 func search(query: [Float], kItems k: Int, collection uuid: UUID) throws -> [(id: Int, distance: Float)] {
     guard let range = ranges[uuid] else { return [] }
     // Same kernel, bounded to one contiguous sub-matrix. O(document), not O(corpus).
-    return scan(query: query, slots: range.slotStart ..< range.slotStart + range.slotCount, k: k)
+    return scan(query: query, slots: range, k: k)        // one contiguous sub-matrix
 }
 ```
 
@@ -498,7 +541,7 @@ enum FaultPoint { case afterReserve, afterVectorWrite, afterMapWrite, afterRecor
 For each point: build a fixture, install an injector that throws there, attempt the operation, close, reopen, and assert
 
 - `slotCount` is either the pre- or the post-operation value, never in between;
-- every surviving record satisfies `slotStart + slotCount <= slotCount`;
+- every surviving record satisfies `slotStart <= slotEnd <= slotCount`;
 - top-k returns exactly the pre-operation document set or exactly the post-operation set, never a mix;
 - re-running the same operation after recovery succeeds and produces no duplicate.
 
@@ -510,14 +553,27 @@ True power loss is not reproducible in-process. The fsync ordering in §2 and §
 
 Assert these at open, and in a debug-only `validate()` the tests call after every mutation.
 
-1. `slotCount <= capacity`, and `capacity == (fileSize - headerSize) / (d * 4)` for `vectors.bin`.
-2. `vectors.bin` and `map.bin` report the same capacity.
-3. `vectors.bin.dimensions == embeddingProvider.dimension`.
-4. Every live range is disjoint from every other live range.
-5. For every live range, no slot in it is tombstoned in `map.bin`.
-6. `deadCount == count of tombstoned slots in [0, slotCount)`.
-7. `slotCount <= pieceCount` for every record.
-8. `ranges.keys` equals the live uuid set in SQLite (post-reconcile).
-9. Every record offset is a multiple of 64 and the file length is a multiple of 64.
+1. `slotCount <= min(vectors.derivedCapacity, map.derivedCapacity)`. Nothing stores capacity, so
+   there is no stored-vs-derived comparison to make — only file lengths against the live count.
+2. `vectors.bin.dimensions == embeddingProvider.dimension`.
+3. Every live range is disjoint from every other live range.
+4. For every live range, no slot in it is tombstoned in `map.bin`.
+5. `deadCount == count of tombstoned slots in [0, slotCount)`. Trivially true immediately after open,
+   since it is computed that way — this checks that mutations keep it true.
+6. `slotStart <= slotEnd <= slotCount` for every surviving record.
+7. `ranges.keys` equals the live uuid set in SQLite (post-reconcile). A live range may be **empty** —
+   an image-only document — and that is not the same as a deleted one.
+8. Every record offset is a multiple of 64, and the file length is a multiple of 64.
+9. All three files agree on `generation`.
 
-Optional, worth it if a corrupted index ever shows up in the field: a per-page CRC32 sidecar for `vectors.bin`. It is the only copy of every embedding and has no integrity check, so a torn page becomes plausible float garbage. Detection is enough — `textContent` survives in SQLite, so `rebuildIndex()` is always available as the escape hatch.
+**No CRC over the vector matrix.** An earlier draft floated a per-page CRC32 sidecar. It does not pay:
+validating it eagerly means reading every page at open, which is the laziness `mmap` exists to provide,
+and validating it lazily puts per-page work inside a scan that is already memory-bandwidth-bound. What it
+would catch is small — a corrupted vector is either NaN, which §10's `isFinite` guard already rejects
+before it can reach the heap, or a finite-but-wrong float, which makes exactly one row score wrong.
+
+The principle: **checksum the small structured metadata, not the bulk data.** Metadata corruption becomes
+a wrong *pointer* — silent, and it contaminates results unrelated to the damaged bytes. Bulk-data
+corruption becomes one wrong *number*, bounded to the row it lives in. That asymmetry is why 4 bytes per
+64-byte record is a good trade and 4 bytes per 4096-byte page is not, and it is why only `map.bin`'s
+header — the one structure rewritten in normal operation — carries a checksum.

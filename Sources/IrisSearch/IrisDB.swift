@@ -30,10 +30,9 @@ public enum IrisDBError: Error {
 /// - map.sqlite
 public actor IrisDB {
     private static let databaseExtension = "irisdb"
-    private static let indexExtension = "index"
     
     private let databaseURL: URL
-    private let textIndex: FaissIndex
+    private let textIndex: any VectorIndex
     private let textEmbedder: EmbeddingProvider
     
     private let dbPool: DatabasePool

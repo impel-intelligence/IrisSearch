@@ -86,15 +86,6 @@ enum HeaderLoadError: Error {
     case invalidVersion
 }
 
-//offset 0      magic "IRIS" (4B)
-//offset 4      version (u8) + pad
-//offset 8      dimensions      (u64)
-//offset 16     slotCount       (u64)   // high-water mark of allocated slots
-//offset 24     capacity        (u64)   // slots the file can currently hold
-//offset 32     deadCount       (u64)   // compaction trigger
-//offset 40…    reserved, zeroed
-//offset 4096   vectors: capacity × d × 4, row-major
-
 enum VectorStorageHeader {
     static let MAGIC = [0x49, 0x52, 0x49, 0x53]
     

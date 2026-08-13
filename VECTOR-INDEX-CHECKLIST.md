@@ -16,23 +16,27 @@ A checklist item you disagree with is a conversation, not a mistake. Several of 
 
 ## Phase 0 — Prep. No new index code.
 
-- [ ] **0.1** Bundle directory creation tests the path it actually creates (`IrisDB.swift:50-52`). Land this alone. Today the bundle exists only as a side effect of the FAISS constructor running before `DatabasePool` opens — make the index directory lazy and fresh installs break.
-- [ ] **0.2** `cachedPieceCount` adjusts per *piece*, on all three write paths including update. It feeds `searchLimit`, which becomes the `k` handed to the new scan. **F-10**
-- [ ] **0.3** `VectorIndex` covers both search methods; `IrisDB` holds the existential. Not `Sendable`; `IrisDB` does not become generic (it is public API the app consumes).
-- [ ] **0.4** One layout type owns the on-disk paths. No hardcoded `"text-index"` / `"global.index"` strings in the package, the tests, or the benchmark.
-- [ ] **0.5** Tests can reach a deterministic embedder with no model download.
+- [x] **0.1** Bundle directory creation tests the path it actually creates (`IrisDB.swift:50-52`). Land this alone. Today the bundle exists only as a side effect of the FAISS constructor running before `DatabasePool` opens — make the index directory lazy and fresh installs break.
+- [x] **0.2** `cachedPieceCount` adjusts per *piece*, on all three write paths including update. It feeds `searchLimit`, which becomes the `k` handed to the new scan. **F-10**
+- [x] **0.3** `VectorIndex` covers both search methods; `IrisDB` holds the existential. Not `Sendable`; `IrisDB` does not become generic (it is public API the app consumes).
+- [x] **0.4** One layout type owns the on-disk paths. No hardcoded `"text-index"` / `"global.index"` strings in the package, the tests, or the benchmark.
+- [x] **0.5** Tests can reach a deterministic embedder with no model download.
 - [ ] **0.6** Dead `SwiftFaiss` / `SwiftFaissC` imports removed.
 
 **Done when:** the full suite passes unchanged and a benchmark run reproduces its previous numbers.
 
 ## Phase 1 — File primitives, wired to nothing. §3, §4
 
-- [ ] **1.1** Magic at offset 0; version at a fixed offset in *every* format version, forever. This is the one decision with no revision path.
+- [x] **1.1** Magic at offset 0; version at a fixed offset in *every* format version, forever. This is the one decision with no revision path.
 - [ ] **1.2** Header size is a literal, and a test asserts it equals the serialized length. This assertion alone catches the prototype's 17-vs-33 bug class permanently.
 - [ ] **1.3** Endianness is explicit, not inherited from the host.
 - [ ] **1.4** The vector file's header is page-sized so the matrix base is page-aligned.
-- [ ] **1.5** Exactly one file owns the authoritative slot count. The others carry payload and capacity only. One commit point, not three.
-- [ ] **1.6** Document records are sized so none straddles a page, and each carries its own checksum plus a monotonic sequence number.
+- [ ] **1.5** Exactly one file owns the authoritative slot count, and it is the only header rewritten in normal operation. One commit point, not three.
+- [ ] **1.5a** Only that header carries a CRC. Write-once headers do not need one — magic, version, and a file-length check already cover them. **§4, §14**
+- [ ] **1.5b** Nothing cheaply derivable is stored — not capacity, not record count, not dead count. A stored copy is a second source of truth that can disagree with the first, and drift persists across launches where a derived value self-heals. **§4**
+- [ ] **1.6** Document records are sized so none straddles a page, and each carries its own checksum plus a monotonic sequence number. A torn append is then bounded to one record — the dangerous shape is a tear that lands a real uuid and garbage after it.
+- [ ] **1.6a** Ranges are stored as `[start, end)`, not start-plus-count. Validating untrusted bytes then needs two comparisons and no arithmetic; `start + count` can overflow, and in Swift that *traps* — turning a corrupt record into a crash during recovery. **§4**
+- [ ] **1.6b** A live/deleted flag exists and is not inferred from an empty range. A live document can legitimately own zero slots. **§4**
 - [ ] **1.7** The mapping is read-only, owned by you (not `Data(.mappedIfSafe)`, which silently falls back to a full read), refcounted, and never remapped in place.
 - [ ] **1.8** Writes go to the file descriptor, not through the mapping.
 - [ ] **1.9** Growth publishes a *new* mapping; the old one survives until its last reader releases it.
@@ -49,8 +53,8 @@ A checklist item you disagree with is a conversation, not a mistake. Several of 
 
 ### Insert
 
-- [ ] **2.5** The slot count comes from the append loop, never from `document.pieces.count`. **§7**
-- [ ] **2.6** Total piece count is stored alongside it, and the relationship is asserted at open.
+- [ ] **2.5** The write routine *returns the range it wrote*, and the record is built from that return value. The `pieces.count` mistake is unrepresentable, not merely asserted against. **§7**
+- [ ] **2.6** A document with zero embeddable pieces still gets a **live** record with an empty range. Skip it and reconcile queues it for re-index on every open, forever. **§4, §7**
 - [ ] **2.7** Zero-norm and non-finite vectors are rejected at insert.
 - [ ] **2.8** The map file grows before the vector file.
 
@@ -59,7 +63,8 @@ A checklist item you disagree with is a conversation, not a mistake. Several of 
 - [ ] **2.9** Records are validated individually, *then* folded last-valid-wins. Not the reverse. **§6**
 - [ ] **2.10** Reconciliation runs in both directions against SQLite. **§6**
 - [ ] **2.11** Stored dimensionality is checked against the live embedder.
-- [ ] **2.12** Divergent capacities are resolved to the minimum and re-grown before any write.
+- [ ] **2.12** Capacity is derived from file length, never stored. Differing file lengths resolve to the minimum and are re-grown before any write. **§4, §6**
+- [ ] **2.12a** `slotCount` is clamped to the derived capacity on read. A torn header can read large, and an unclamped scan runs off the end of the mapping. **§6**
 - [ ] **2.13** Orphaned generations are swept.
 
 ### Mutate
