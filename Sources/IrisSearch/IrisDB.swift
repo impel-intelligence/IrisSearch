@@ -55,10 +55,8 @@ public actor IrisDB {
 
         self.textEmbedder = textEmbedder
         
-        if !FileManager.default.fileExists(atPath: databaseLocation.path(percentEncoded: false)) {
-            try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
-        }
-        
+        try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
+
         self.textIndex = try FaissIndex(indexLocation: databaseURL.appending(path: "text-index"), embeddingProvider: textEmbedder)
 
         let sqliteURL = databaseURL.appending(path: "map").appendingPathExtension("sqlite")

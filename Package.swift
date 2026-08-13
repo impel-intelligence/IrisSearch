@@ -52,6 +52,9 @@ let package = Package(
                 "SwiftFaiss",
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Logging", package: "swift-log")
+            ],
+            linkerSettings: [
+                .linkedFramework("Accelerate")
             ]
         ),
         .testTarget(

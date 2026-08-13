@@ -10,7 +10,7 @@ import SwiftFaiss
 import SwiftFaissC
 import IrisCommon
 
-final class FaissIndex {
+final class FaissIndex: VectorIndex {
     private static let indexExtension = "index"
     
     enum IndexLocation {
