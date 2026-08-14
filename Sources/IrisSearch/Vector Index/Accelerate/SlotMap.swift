@@ -7,22 +7,85 @@
 
 import Foundation
 
-class SlotMap {
+protocol DataExpressible {
+    func encode(into bytes: inout [UInt8])
+    func encoded() -> [UInt8]
+}
+
+class SlotMap: DataExpressible {
+    struct SlotMapHeader: DataExpressible {
+        enum Offset: UInt {
+            case magic = 0
+            case version = 4
+            case slotCount = 8
+            case generation = 16
+            case flags = 24
+            case crc = 28
+        }
+        
+        static let byteCount: Int = 64
+        
+        func encode(into bytes: inout [UInt8]) {
+            <#code#>
+        }
+        
+        func encoded() -> [UInt8] {
+            <#code#>
+        }
+        
+
+    }
+    
+    enum Offset: UInt {
+        case header = 0
+        case pieceIDs = 64
+    }
+    
+    
     static let magic = Array("IMAP".utf8)
     static let tombstoneValue: UInt64 = UInt64.max
     
     private(set) var entries: [UInt64]
-    private(set) var deadCount: Int
+    private(set) var deadCount: Int = 0
+    private let generation: Int
     
     public var count: Int { entries.count }
     public var deadFraction: Double { count == 0 ? 0 : Double(deadCount) / Double(count) }
     
-    init(entries: [UInt64], deadCount: Int) {
-        self.entries = entries
-        self.deadCount = deadCount
+    var byteCount: Int {
+        SlotMapHeader.byteCount + (count * MemoryLayout<UInt64>.size)
     }
     
+    init(entries: [UInt64]) {
+        self.entries = entries
+        self.generation = 0
+        scanDeadCount()
+    }
     
+    private func scanDeadCount() {
+        deadCount = entries.count { $0 == SlotMap.tombstoneValue }
+    }
+    
+    /// Appends the serialized record. There is no offset parameter: the destination's current end *is* the offset, so callers cannot pass an inconsistent one.
+    func encode(into bytes: inout [UInt8]) {
+        let base = bytes.count
+        bytes.append(contentsOf: repeatElement(0, count: byteCount))
+        bytes.store(magic, at: <#T##Int#>)
+//        bytes.store(uuid, at: base + Offset.uuid)
+//        bytes.store(UInt64(bitPattern: documentID), at: base + Offset.documentID)
+//        bytes.store(UInt64(slots.lowerBound), at: base + Offset.slotStart)
+//        bytes.store(UInt64(slots.upperBound), at: base + Offset.slotEnd)
+//        bytes.store(sequence, at: base + Offset.sequence)
+//        bytes.store(flags.rawValue, at: base + Offset.flags)
+//        bytes.store(CRC32.checksum(bytes[base ..< base + Offset.checksum]), at: base + Offset.checksum)
+    }
+
+    func encoded() -> [UInt8] {
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(byteCount)
+        encode(into: &bytes)
+        return bytes
+    }
 }
 
 extension SlotMap {
