@@ -37,8 +37,12 @@ A checklist item you disagree with is a conversation, not a mistake. Several of 
 - [ ] **1.6** Document records are sized so none straddles a page, and each carries its own checksum plus a monotonic sequence number. A torn append is then bounded to one record — the dangerous shape is a tear that lands a real uuid and garbage after it.
 - [ ] **1.6a** Ranges are stored as `[start, end)`, not start-plus-count. Validating untrusted bytes then needs two comparisons and no arithmetic; `start + count` can overflow, and in Swift that *traps* — turning a corrupt record into a crash during recovery. **§4**
 - [ ] **1.6b** A live/deleted flag exists and is not inferred from an empty range. A live document can legitimately own zero slots. **§4**
-- [ ] **1.7** The mapping is read-only, owned by you (not `Data(.mappedIfSafe)`, which silently falls back to a full read), refcounted, and never remapped in place.
-- [ ] **1.8** Writes go to the file descriptor, not through the mapping.
+- [ ] **1.7** The mapping uses `Data(contentsOf:options:.alwaysMapped)`. Not `.mappedIfSafe`, which silently falls back to a full read — a multi-GB resident allocation. Verified lazy: 800 MB mapped moved the footprint by 0.0 MB. **§3**
+- [ ] **1.7a** Growth publishes a *new* mapping rather than mutating one in place, and a scan retains its `Data` for the whole scan so a concurrent growth cannot pull memory out from under it. ARC provides this; do not hand-roll it. **§3**
+- [ ] **1.8** Writes go through `FileHandle`; the mapping stays read-only. No `msync`, and a scan cannot be disturbed by a concurrent write elsewhere in the file. **§2**
+- [ ] **1.8a** The file cursor is confined to one type. `FileHandle` has no positional write, so `seek` + `write` is safe only because one actor owns the writer — no call site outside that type may see a cursor. **§2**
+- [ ] **1.8b** The non-Foundation surface is exactly three calls — `fcntl(F_FULLFSYNC)`, directory `fsync`, and `flock` — each confined to `Durability` or the writer-lock helper so nothing else imports `Darwin`. **§2**
+- [ ] **1.8c** `F_FULLFSYNC` is `#if canImport(Darwin)` because Darwin's `fsync` does not flush the device write cache. Linux's does, so `synchronize()` is already the strong version there — this is a platform workaround, not a portability hole. **§2**
 - [ ] **1.9** Growth publishes a *new* mapping; the old one survives until its last reader releases it.
 - [ ] **1.10** A golden byte-for-byte header fixture exists, so a later refactor cannot silently change the on-disk format.
 

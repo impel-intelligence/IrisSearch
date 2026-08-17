@@ -12,8 +12,8 @@ Read §1 and §6 first. Everything else is mechanical; those two are where the c
 
 | Type | File | Responsibility |
 | --- | --- | --- |
-| `MappedRegion` | `Vector Index/Accelerate/MappedRegion.swift` | One refcounted read-only `mmap`. Never remapped in place. |
-| `Durability` | `Vector Index/Accelerate/Durability.swift` | `sync()`, `fullSync()`, `syncDirectory()` |
+| `BinaryFile` | `Vector Index/Accelerate/BinaryFile.swift` | Wraps one `FileHandle`. The cursor lives here and nowhere else. |
+| `Durability` | `Vector Index/Accelerate/Durability.swift` | `sync()` via Foundation; `fullSync()`/`syncDirectory()` are Darwin shims |
 | `VectorFile` | `Vector Index/Accelerate/VectorFile.swift` | `[capacity × d]` float32 matrix |
 | `SlotMapFile` | `Vector Index/Accelerate/SlotMapFile.swift` | slot → piece rowid; **owns the authoritative `slotCount`** |
 | `DocumentLogFile` | `Vector Index/Accelerate/DocumentLogFile.swift` | append-only log of 64-byte document records |
@@ -33,7 +33,7 @@ Read §1 and §6 first. Everything else is mechanical; those two are where the c
 // FORBIDDEN — two concurrent creates both read slotCount = 1000 and write overlapping ranges.
 func addDocument(_ doc) async throws {
     let start = slotCount
-    await fsync()              // ← actor released here; the other create now reads the same start
+    await sync()               // ← actor released here; the other create now reads the same start
     slotCount = start + n
 }
 ```
@@ -55,7 +55,7 @@ Keep `addDocument` / `removeDocument` non-`async`. Get fsync amortisation from g
 
 Match the primitive to the failure mode:
 
-- **Process death** (jetsam, force quit, `SIGKILL`, an uncaught crash) — the page cache is in the kernel and survives. Everything written with `pwrite` is visible to the next process. **No sync is needed at all.** This is overwhelmingly the most likely way the app dies.
+- **Process death** (jetsam, force quit, `SIGKILL`, an uncaught crash) — the page cache is in the kernel and survives. Everything already written is visible to the next process. **No sync is needed at all.** This is overwhelmingly the most likely way the app dies.
 - **Kernel panic** — page cache lost. Plain `fsync` covers it, for 0.033 ms.
 - **Power loss** — the device write cache is lost too. Only `F_FULLFSYNC` covers it, for 4.6 ms.
 
@@ -64,53 +64,84 @@ The reason to sync at all is **ordering, not durability**. Without it, a flush c
 ```
 enum Durability {
     // Hot path. Ordering + kernel-panic safety for 0.033 ms. Call on the payload files
-    // BEFORE bumping slotCount; fsync(A) returning before fsync(B) is called orders A ahead of B.
-    static func sync(_ fd: Int32) { fsync(fd) }
+    // BEFORE writing the header; sync(A) returning before sync(B) is called orders A ahead of B.
+    // Foundation, typed, portable.
+    static func sync(_ handle: FileHandle) throws { try handle.synchronize() }
 
     // Power-loss durability. 4.6 ms — reserve it for compaction commit and clean shutdown,
     // where it happens once rather than once per batch.
-    static func fullSync(_ fd: Int32) { fcntl(fd, F_FULLFSYNC) }
-
-    // A rename is not durable until the containing directory is synced.
-    static func syncDirectory(_ url: URL) {
-        let dfd = open(url.path, O_RDONLY)
-        defer { close(dfd) }
-        fcntl(dfd, F_FULLFSYNC)
+    //
+    // Darwin-only BECAUSE Darwin's fsync does not flush the device write cache. Linux's does,
+    // so `synchronize()` above is already the strong version there. This is a workaround for a
+    // platform weakness, not a portability hole.
+    static func fullSync(_ handle: FileHandle) throws {
+        #if canImport(Darwin)
+        guard fcntl(handle.fileDescriptor, F_FULLFSYNC) != -1 else { throw Errno.current }
+        #else
+        try handle.synchronize()
+        #endif
     }
+
+    // A rename is not durable until the containing directory is synced, and Foundation has no
+    // API for opening a directory.
+    static func syncDirectory(_ url: URL) throws { ... }
 }
 ```
+
+**The complete non-Foundation surface, three calls:**
+
+| call | why Foundation cannot | ports to |
+| --- | --- | --- |
+| `fcntl(F_FULLFSYNC)` | no API; Darwin's `fsync` is weak | Darwin only — and only *needed* on Darwin |
+| directory `fsync` | Foundation cannot open a directory | POSIX |
+| `flock(LOCK_EX\|LOCK_NB)` | no advisory-locking API at all | POSIX (macOS, Linux; not Windows) |
+
+Everything else — mapping, reading, writing, growth, rename, plain `fsync` — is Foundation. Keep these
+three behind `Durability` and the writer-lock helper so the rest of the index never imports `Darwin`.
 
 **Plus a dirty bit, which is what turns "we hope the ordering held" into "we check."** Carry `cleanShutdown: Bool` in `map.bin`'s header: clear it on the first write after open, set it on close. If `open()` finds it clear, the process did not shut down cleanly — run the §6 reconcile unconditionally rather than trusting the tail of the log. This is the same trick filesystems use, and it costs nothing on the normal path.
 
-Writes go through `pwrite(fd, buf, len, offset)`, **not** through the mapping. The mapping stays `PROT_READ`. This removes any need for `msync` and keeps the reader and writer paths independent.
+Writes go through `FileHandle`, **not** through the mapping, which stays read-only. That removes any need for `msync` and keeps the reader and writer paths independent: a scan holding a pointer into the mapping cannot be disturbed by a concurrent write elsewhere in the file.
+
+`FileHandle` has no positional write, so `BinaryFile` does `seek(toOffset:)` then `write(contentsOf:)`. Two calls against a shared cursor, which is safe **only because one actor owns the writer** — that discipline is now load-bearing rather than incidental. Contain the cursor inside `BinaryFile` so no call site can observe it.
 
 ---
 
-## 3. MappedRegion
+## 3. The mapping
 
-Growth publishes a *new* mapping. The old one lives until the last in-flight scan releases it, which is what will let the scan move off the actor later without a use-after-free.
+`vectors.bin` is mapped with Foundation. There is no hand-rolled region type.
 
 ```
-final class MappedRegion {
-    let base: UnsafeRawPointer
-    let byteCount: Int
+let mapping = try Data(contentsOf: vectorsURL, options: .alwaysMapped)
+```
 
-    init(fd: Int32, byteCount: Int) {
-        base = mmap(nil, byteCount, PROT_READ, MAP_SHARED, fd, 0)
-        // precondition base != MAP_FAILED
-    }
+**Use `.alwaysMapped`, not `.mappedIfSafe`.** The latter silently falls back to a *full read* when the
+volume is not deemed safe, which on a multi-GB index is a resident allocation large enough to get the
+app jetsammed. `.alwaysMapped` maps unconditionally. Measured on an 800 MB file: footprint 1.7 MB before
+mapping, 1.7 MB after mapping, 2.1 MB after touching one byte per 4 MB — genuinely lazy, no fallback.
 
-    deinit { munmap(base, byteCount) }
+**ARC gives you the lifetime discipline for free.** An earlier draft hand-rolled a refcounted
+`MappedRegion` so that a scan in flight could not have its memory `munmap`ed by a concurrent growth.
+`Data` is a value type whose mapped backing store is already reference-counted, so holding a `Data`
+across a scan *is* the retain. Growth reads a new `Data` from the resized file; the old mapping is
+released when the last in-flight scan drops its copy. Same guarantee, none of the code.
 
-    func floats(atSlot slot: Int, dimensions d: Int, count: Int) -> UnsafeBufferPointer<Float> {
-        let offset = VectorFile.headerSize + slot * d * 4
-        return UnsafeBufferPointer(start: base.advanced(by: offset).assumingMemoryBound(to: Float.self),
-                                   count: count * d)
-    }
+The one adjustment: BLAS needs a raw pointer, and `Data` only vends one inside a closure. So the whole
+tiled scan runs inside a single `withUnsafeBytes`. That is a better shape than the hand-rolled version
+anyway — the pointer provably cannot outlive the scope, enforced by the compiler rather than by
+convention.
+
+```
+try mapping.withUnsafeBytes { raw in
+    let base = raw.baseAddress!.advanced(by: VectorFile.headerSize)
+                               .assumingMemoryBound(to: Float.self)
+    // ... every tile of the scan, then top-k, all inside this closure ...
 }
 ```
 
-Do **not** use `Data(contentsOf:options:.mappedIfSafe)`. It silently falls back to a full read when the volume is not deemed safe — a multi-GB resident allocation.
+Two assumptions worth asserting once rather than trusting: the mapped `Data` is contiguous (true for a
+mapped file, so `withUnsafeBytes` does not flatten and copy), and `VectorFile.headerSize` is
+page-aligned so the matrix base is too.
 
 ---
 
@@ -328,11 +359,11 @@ func addDocument(document: IrisDocument) throws {   // synchronous. no await, an
     //    leave the map smaller than the vectors file. Capacity is derived from file length.
     if start + n > generation.derivedCapacity {
         let newCapacity = max(start + n, generation.derivedCapacity * 2)
-        try generation.map.grow(to: newCapacity)          // ftruncate + republish MappedRegion
+        try generation.map.grow(to: newCapacity)          // truncate(atOffset:) + re-read the mapping
         try generation.vectors.grow(to: newCapacity)
     }
 
-    // 4. Write payload. pwrite to the fd; the mapping stays read-only. This RETURNS the range it
+    // 4. Write payload through BinaryFile; the mapping stays read-only. This RETURNS the range it
     //    wrote — the record is built from the return value, never from the document. That is what
     //    makes the pieces.count mistake unrepresentable rather than merely asserted against.
     let slots: Range<UInt64> = try generation.writePayload(vectors: vectors, ids: ids, at: start)
@@ -360,7 +391,7 @@ func flush() throws {
     guard pendingSlotCount != durableSlotCount else { return }
 
     // Payload ordered ahead of the count. Plain fsync, ~0.033 ms each — see §2 for why this is
-    // the right primitive here and F_FULLFSYNC is not.
+    // the right primitive here and fullSync is not.
     Durability.sync(generation.vectors.fd)
     Durability.sync(generation.map.fd)
     Durability.sync(generation.documents.fd)
@@ -434,8 +465,12 @@ func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)
                                               //   legitimately negative cosine.
     if rows == 0 { return [] }
 
-    let region = generation.vectors.region    // retain ONCE, synchronously. The scan may outlive a
-                                              // growth; the old mapping stays alive via this ref.
+    let mapping = generation.vectors.mapping  // retain ONCE, synchronously. A concurrent growth
+                                              // publishes a NEW Data; this copy keeps the old
+                                              // mapping alive for the duration of the scan.
+    // Everything below runs inside `mapping.withUnsafeBytes { raw in ... }`, with
+    // `matrixBase = raw.baseAddress! + VectorFile.headerSize` bound to Float. The closure scope is
+    // what makes the pointer's lifetime checkable by the compiler instead of by convention.
     let tileRows = 262_144
     let tiles = stride(from: 0, to: rows, by: tileRows)
 
@@ -451,7 +486,7 @@ func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)
 
         cblas_sgemv(CblasRowMajor, CblasNoTrans,
                     Int32(m), Int32(dimensions),
-                    1.0, region.floats(atSlot: start, dimensions: dimensions, count: m).baseAddress,
+                    1.0, matrixBase.advanced(by: start * dimensions),
                     Int32(dimensions), q, 1, 0.0, &scores, 1)
 
         var heap = TopK(capacity: widened)
@@ -567,7 +602,7 @@ Assert these at open, and in a debug-only `validate()` the tests call after ever
 9. All three files agree on `generation`.
 
 **No CRC over the vector matrix.** An earlier draft floated a per-page CRC32 sidecar. It does not pay:
-validating it eagerly means reading every page at open, which is the laziness `mmap` exists to provide,
+validating it eagerly means reading every page at open, which is the laziness `.alwaysMapped` exists to provide,
 and validating it lazily puts per-page work inside a scan that is already memory-bandwidth-bound. What it
 would catch is small — a corrupted vector is either NaN, which §10's `isFinite` guard already rejects
 before it can reach the heap, or a finite-but-wrong float, which makes exactly one row score wrong.

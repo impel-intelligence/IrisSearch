@@ -26,21 +26,17 @@ extension Array where Element == UInt8 {
 extension Collection where Element == UInt8, Index == Int {
     /// - Note: Offsets are relative to `startIndex`, not to zero. Slices do not rebase.
     func load<T: FixedWidthInteger>(at offset: Int) -> T {
-        let base = startIndex + offset
         var value = T.zero
-        // Swift-qualified: unqualified, this resolves to Array's instance method, not the global function.
         Swift.withUnsafeMutableBytes(of: &value) { destination in
-            for i in 0..<MemoryLayout<T>.size { destination[i] = self[base + i] }
+            for i in 0..<MemoryLayout<T>.size { destination[i] = self[offset + i] }
         }
-        return T(littleEndian: value)
-    }
+        return T(littleEndian: value)    }
 
     func loadUUID(at offset: Int) -> UUID {
-        let base = startIndex + offset
         var tuple = (UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
                      UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0))
         Swift.withUnsafeMutableBytes(of: &tuple) { destination in
-            for i in 0..<16 { destination[i] = self[base + i] }
+            for i in 0..<16 { destination[i] = self[offset + i] }
         }
         return UUID(uuid: tuple)
     }

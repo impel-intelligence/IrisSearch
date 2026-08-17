@@ -25,7 +25,8 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
-        .package(url: "https://github.com/swiftlang/swift-markdown", from: "0.8.0")
+        .package(url: "https://github.com/swiftlang/swift-markdown", from: "0.8.0"),
+        .package(url: "https://github.com/krzyzanowskim/CryptoSwift", from: "1.10.0")
     ],
     targets: [
         // Common
@@ -51,7 +52,8 @@ let package = Package(
                 "IrisCommon",
                 "SwiftFaiss",
                 .product(name: "GRDB", package: "GRDB.swift"),
-                .product(name: "Logging", package: "swift-log")
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "CryptoSwift", package: "CryptoSwift")
             ],
             linkerSettings: [
                 .linkedFramework("Accelerate")
