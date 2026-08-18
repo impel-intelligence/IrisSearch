@@ -130,9 +130,9 @@ final class SlotMap: DataExpressible {
         SlotMap.Header.byteCount + (count * MemoryLayout<UInt64>.size)
     }
     
-    init(entries: [UInt64]) {
+    init(entries: [UInt64], generation: UInt64) {
         self.entries = entries
-        self.header = Header(slotCount: entries.count, generation: 0, flags: .empty)
+        self.header = Header(slotCount: entries.count, generation: generation, flags: .empty)
         scanDeadCount()
     }
     

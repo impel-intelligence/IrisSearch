@@ -7,8 +7,8 @@
 
 import Foundation
 
-final class BinaryFile {
-    private var handle: FileHandle
+class BinaryFile {
+    internal var handle: FileHandle
     
     init(url: URL) throws {
         self.handle = try FileHandle(forUpdating: url)

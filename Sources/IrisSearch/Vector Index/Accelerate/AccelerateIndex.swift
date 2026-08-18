@@ -1,31 +1,45 @@
 //
-//  IrisAccelerate.swift
+//  AcceleratIndex.swift
 //  IrisSearch
 //
-//  Created by Taylor Lineman on 8/12/26.
+//  Created by Taylor Lineman on 8/18/26.
 //
 
-#if os(Linux)
-import Glibc
-#else
-import Darwin
-#endif
-
 import Foundation
-import Accelerate
 import IrisCommon
 
 //final class AccelerateIndex: VectorIndex {
-//    required init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
+//    private var embeddingProvider: EmbeddingProvider
+//    private var indexLocation: URL
+//    
+//    private var vectorStore: VectorStoreFile
+//    private var slotMap: SlotMap
+//    private var documentMap: DocumentMap
+//
+//    init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
+//        self.indexLocation = indexLocation
+//        self.embeddingProvider = embeddingProvider
 //        
+//        
+//        
+////        vectorStore = try VectorStoreFile.new(at: <#T##URL#>, dimensions: <#T##UInt64#>)
 //    }
 //    
 //    func addDocument(document: IrisDocument) throws {
-//        
+//        <#code#>
 //    }
 //    
 //    func removeDocument(documentID: UUID, pieceIDs: [Int]) throws {
-//        perAdded
-
+//        <#code#>
 //    }
+//    
+//    func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
+//        <#code#>
+//    }
+//    
+//    func search(query: [Float], kItems k: Int, collection: UUID) throws -> [(id: Int, distance: Float)] {
+//        <#code#>
+//    }
+//    
+//    
 //}

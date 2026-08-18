@@ -70,7 +70,7 @@ final class DocumentMap: DataExpressible {
             self.flags = flags
         }
         
-        init(bytes: [UInt8], at base: Int, fileLength: Int, maximumSlotCount: Int) throws {
+        init(bytes: [UInt8], at base: Int, maximumSlotCount: Int) throws {
             // Make sure we have at least the minimum amount of bytes needed for the header.
             guard bytes.count >= base + Self.byteCount else {
                 throw DocumentMapError.truncatedFile(found: bytes.count, needed: Self.byteCount)
@@ -138,7 +138,7 @@ final class DocumentMap: DataExpressible {
             self.generation = generation
         }
 
-        public init(bytes: [UInt8], fileLength: Int) throws {
+        public init(bytes: [UInt8]) throws {
             // Make sure we have at least the minimum amount of bytes needed for the header.
             guard bytes.count >= Self.byteCount else {
                 throw DocumentMapError.truncatedFile(found: bytes.count, needed: Self.byteCount)
@@ -183,7 +183,7 @@ final class DocumentMap: DataExpressible {
         static let records = 64
     }
     
-    private(set) var ranges: [UUID: DocumentRange] = [:]
+    private(set) var ranges: [UUID: DocumentRange]
     private(set) var deadCount: Int = 0
     private(set) var nextSequence: Int = 0
 
@@ -196,25 +196,26 @@ final class DocumentMap: DataExpressible {
         DocumentMap.Header.byteCount + (count * MemoryLayout<UInt64>.size)
     }
     
-    init() {
-        header = DocumentMap.Header(generation: 0)
+    init(generation: UInt64) {
+        header = DocumentMap.Header(generation: generation)
+        ranges = [:]
     }
     
-    init(bytes: [UInt8], fileSize: Int, maximumSlotCount: Int) throws {
-        header = try DocumentMap.Header(bytes: bytes, fileLength: fileSize)
+    init(bytes: [UInt8], maximumSlotCount: Int) throws {
+        header = try DocumentMap.Header(bytes: bytes)
+        ranges = [:]
         
-        let recordBytes = fileSize - Offset.records
+        let recordBytes = bytes.count - Offset.records
         let expectedRecordEnd = (recordBytes / Record.byteCount) * Record.byteCount
         
         guard expectedRecordEnd > Offset.records else {
-            ranges = [:]
             return
         }
         
         var unfilteredRecords: [Record] = []
         
         for base in stride(from: Offset.records, to: expectedRecordEnd, by: Record.byteCount) {
-            guard let record = try? Record(bytes: bytes, at: base, fileLength: fileSize, maximumSlotCount: maximumSlotCount) else {
+            guard let record = try? Record(bytes: bytes, at: base, maximumSlotCount: maximumSlotCount) else {
                 continue
             }
             
