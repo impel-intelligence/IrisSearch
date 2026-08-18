@@ -19,7 +19,6 @@ struct SearchableDocument: Codable, FetchableRecord, TableRecord {
     public var rank: Double // The FTS5 hidden rank column
 }
 
-
 public struct IrisDocument: Identifiable, Sendable, FetchableRecord, MutablePersistableRecord {
     public static let databaseTableName: String = "documents"
     static let pieces = hasMany(DocumentPiece.self)

@@ -17,15 +17,16 @@ enum SlotMapError: Error {
     case slotCountExceedsFileSize(declaredSlots: Int, maximumSlots: Int)
 }
 
-class SlotMap: DataExpressible {
+/// An index map of Piece IDs to their index within the vector store.
+final class SlotMap: DataExpressible {
     struct Header: DataExpressible {
-        enum Offset: Int {
-            case magic = 0
-            case version = 4
-            case slotCount = 8
-            case generation = 16
-            case flags = 24
-            case checksum = 28
+        enum Offset {
+            static let magic = 0
+            static let version = 4
+            static let slotCount = 8
+            static let generation = 16
+            static let flags = 24
+            static let checksum = 28
         }
         
         struct Flags: OptionSet {
@@ -56,47 +57,50 @@ class SlotMap: DataExpressible {
                 throw SlotMapError.truncatedFile(found: bytes.count, needed: Self.byteCount)
             }
             
+            // Subscripts are absolute, so slices need `base`. `load(at:)` rebases off startIndex
+            // itself, so it takes the field offset bare — adding `base` there would count
+            // startIndex twice. See the note on `load(at:)` in BitWriting.swift.
             let base = bytes.startIndex
-            
+
             let magic = Array(bytes[base..<base + Self.magic.count])
             guard magic == Self.magic else {
                 throw SlotMapError.notASlotMap
             }
-            
-            let version: UInt32 = bytes.load(at: base + Offset.version.rawValue)
+
+            let version: UInt32 = bytes.load(at: Offset.version)
             guard version == Self.version else {
                 throw SlotMapError.unsupportedVersion(found: version, supported: Self.version)
             }
-            
-            let storedCRC: UInt32 = bytes.load(at: base + Offset.checksum.rawValue)
-            let computedCRC: UInt32 = Checksum.crc32(Array(bytes[base..<base + Offset.checksum.rawValue]))
+
+            let storedCRC: UInt32 = bytes.load(at: Offset.checksum)
+            let computedCRC: UInt32 = Checksum.crc32(Array(bytes[base..<base + Offset.checksum]))
             guard storedCRC == computedCRC else {
                 throw SlotMapError.checksumMismatch(found: storedCRC, expected: computedCRC)
             }
-            
-            let claimedSlotCount: Int = bytes.load(at: base + Offset.slotCount.rawValue)
+
+            let claimedSlotCount: Int = bytes.load(at: Offset.slotCount)
             let slotCapacity = max(0, fileLength - Self.byteCount) / MemoryLayout<UInt64>.size
             guard claimedSlotCount <= slotCapacity else {
                 throw SlotMapError.slotCountExceedsFileSize(declaredSlots: claimedSlotCount, maximumSlots: slotCapacity)
             }
-            
+
             self.slotCount = claimedSlotCount
-            self.generation = bytes.load(at: base + Offset.generation.rawValue)
-            self.flags = Flags(rawValue: bytes.load(at: base + Offset.flags.rawValue))
+            self.generation = bytes.load(at: Offset.generation)
+            self.flags = Flags(rawValue: bytes.load(at: Offset.flags))
         }
 
         func encode(into bytes: inout [UInt8]) {
             let base = bytes.count
             bytes.append(contentsOf: repeatElement(0, count: Self.byteCount))
             bytes.replaceSubrange(base ..< base + Self.magic.count, with: Self.magic)
-            bytes.store(SlotMap.Header.version, at: base + Offset.version.rawValue)
-            bytes.store(slotCount, at: base + Offset.slotCount.rawValue)
-            bytes.store(generation, at: base + Offset.generation.rawValue)
-            bytes.store(flags.rawValue, at: base + Offset.flags.rawValue)
+            bytes.store(SlotMap.Header.version, at: base + Offset.version)
+            bytes.store(slotCount, at: base + Offset.slotCount)
+            bytes.store(generation, at: base + Offset.generation)
+            bytes.store(flags.rawValue, at: base + Offset.flags)
             
             // Take a checksum of the first 28 bytes and store it.
-            let checksum = Checksum.crc32(Array(bytes[base ..< base + Offset.checksum.rawValue]))
-            bytes.store(checksum, at: base + Offset.checksum.rawValue)
+            let checksum = Checksum.crc32(Array(bytes[base ..< base + Offset.checksum]))
+            bytes.store(checksum, at: base + Offset.checksum)
         }
         
         func encoded() -> [UInt8] {
@@ -107,12 +111,11 @@ class SlotMap: DataExpressible {
         }
     }
     
-    enum Offset: Int {
-        case header = 0
-        case pieceIDs = 64
+    enum Offset {
+        static let header = 0
+        static let pieceIDs = 64
     }
 
-    static let magic = Array("IMAP".utf8)
     static let tombstoneValue: UInt64 = UInt64.max
     
     private(set) var entries: [UInt64]
@@ -136,16 +139,16 @@ class SlotMap: DataExpressible {
     init(bytes: [UInt8], fileSize: Int) throws {
         precondition(SlotMap.Header.byteCount % MemoryLayout<UInt64>.alignment == 0, "Entries must start aligned for bindMemory")
         header = try SlotMap.Header(bytes: bytes, fileLength: fileSize)
-        let expectedSlotEnd = Offset.pieceIDs.rawValue + (header.slotCount * MemoryLayout<UInt64>.size)
+        let expectedSlotEnd = Offset.pieceIDs + (header.slotCount * MemoryLayout<UInt64>.size)
         
-        guard expectedSlotEnd > Offset.pieceIDs.rawValue else {
+        guard expectedSlotEnd > Offset.pieceIDs else {
             entries = []
             return
         }
         
         // Remap the rest of the bytes into a little endian UInt64 array.
         entries = bytes.withUnsafeBytes { raw in
-            let buffer = UnsafeRawBufferPointer(rebasing: raw[Offset.pieceIDs.rawValue..<expectedSlotEnd])
+            let buffer = UnsafeRawBufferPointer(rebasing: raw[Offset.pieceIDs..<expectedSlotEnd])
             let array = Array(buffer.bindMemory(to: UInt64.self))
             return array.map { UInt64(littleEndian: $0) }
         }
