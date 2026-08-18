@@ -8,19 +8,18 @@
 import Foundation
 import UniformTypeIdentifiers
 
-enum DatabaseGenerationError: Error {
+enum DatabaseGenerationError: Error, Equatable {
     case noGenerationExists(url: URL)
     case notADirectory(url: URL)
 }
 
 final class DatabaseGeneration {
     public var generation: UInt64
+    public var vectorStore: VectorStoreFile
+    public var slotMap: SlotMapFile
+    public var documentMap: DocumentMapFile
     
     private var url: URL
-    
-    private var vectorStore: VectorStoreFile
-    private var slotMap: SlotMapFile
-    private var documentMap: DocumentMapFile
     
     /// <#Description#>
     /// - Parameters:
@@ -37,9 +36,14 @@ final class DatabaseGeneration {
         self.slotMap = try SlotMapFile(url: slotMapURL)
         
         let docMapURL = url.appending(path: "doc.bin")
-        self.documentMap = try DocumentMapFile(url: docMapURL, maximumSlotCount: slotMap.header.count)
+        self.documentMap = try DocumentMapFile(url: docMapURL, maximumSlotCount: slotMap.map.count)
     }
-    
+   
+}
+
+
+// MARK: Creation & Loading
+extension DatabaseGeneration {
     /// Find the current generation in a parent directory
     /// - Parameter parentDirectory: The directory to search for generations in.
     static func detect(in parentDirectory: URL) throws -> UInt64? {
@@ -69,6 +73,7 @@ final class DatabaseGeneration {
             throw DatabaseGenerationError.noGenerationExists(url: generationURL)
         }
         
+        // A safeguard, but realistically can never be triggered since generationURL is set to a .directory and the fileExists will fail if it is not a directory.
         guard isDirectory.boolValue else { throw DatabaseGenerationError.notADirectory(url: generationURL) }
         
         return try DatabaseGeneration(generation: generation, url: generationURL)

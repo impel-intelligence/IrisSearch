@@ -12,7 +12,7 @@ public protocol VectorIndex {
     init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws
     
     func addDocument(document: IrisDocument) throws
-    func removeDocument(documentID: UUID, pieceIDs: [Int]) throws
+    func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws
     
     func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)]
     func search(query: [Float], kItems k: Int, collection: UUID) throws -> [(id: Int, distance: Float)]

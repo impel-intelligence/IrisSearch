@@ -37,8 +37,12 @@ A checklist item you disagree with is a conversation, not a mistake. Several of 
 - [ ] **1.6** Document records are sized so none straddles a page, and each carries its own checksum plus a monotonic sequence number. A torn append is then bounded to one record — the dangerous shape is a tear that lands a real uuid and garbage after it.
 - [ ] **1.6a** Ranges are stored as `[start, end)`, not start-plus-count. Validating untrusted bytes then needs two comparisons and no arithmetic; `start + count` can overflow, and in Swift that *traps* — turning a corrupt record into a crash during recovery. **§4**
 - [ ] **1.6b** A live/deleted flag exists and is not inferred from an empty range. A live document can legitimately own zero slots. **§4**
+- [ ] **1.6c** Byte order is written down: metadata little-endian, `vectors.bin` host order, index not portable across endianness. The matrix cannot be swapped without materialising it, and the failure mode is silent — headers parse, distances are nonsense. **§4**
+- [ ] **1.6d** The offset convention is stated where both halves are used: `load(at:)` rebases off `startIndex`, while `store` and array subscripts are absolute. Adding `base` to a load counts `startIndex` twice — inert for `[UInt8]`, wrong for a slice. **§4**
 - [ ] **1.7** The mapping uses `Data(contentsOf:options:.alwaysMapped)`. Not `.mappedIfSafe`, which silently falls back to a full read — a multi-GB resident allocation. Verified lazy: 800 MB mapped moved the footprint by 0.0 MB. **§3**
 - [ ] **1.7a** Growth publishes a *new* mapping rather than mutating one in place, and a scan retains its `Data` for the whole scan so a concurrent growth cannot pull memory out from under it. ARC provides this; do not hand-roll it. **§3**
+- [ ] **1.7b** The mapping is remapped after *every* payload write, not only after growth. Foundation maps `MAP_PRIVATE`, so a `FileHandle` write is invisible to an existing mapping — measured 64 stale out of 64 pages, faulted or not. Without the remap, every freshly written vector scores against the zero-fill that was there when the mapping was taken. **§3**
+- [ ] **1.7c** That remap is not deferred to `flush`. Readers see a document the moment the slot count advances, which is before the flush. Cost is 0.13 ms on an 88 MB file — `mmap` is lazy, so it is bookkeeping, not I/O. **§3**
 - [ ] **1.8** Writes go through `FileHandle`; the mapping stays read-only. No `msync`, and a scan cannot be disturbed by a concurrent write elsewhere in the file. **§2**
 - [ ] **1.8a** The file cursor is confined to one type. `FileHandle` has no positional write, so `seek` + `write` is safe only because one actor owns the writer — no call site outside that type may see a cursor. **§2**
 - [ ] **1.8b** The non-Foundation surface is exactly three calls — `fcntl(F_FULLFSYNC)`, directory `fsync`, and `flock` — each confined to `Durability` or the writer-lock helper so nothing else imports `Darwin`. **§2**
@@ -67,8 +71,13 @@ A checklist item you disagree with is a conversation, not a mistake. Several of 
 - [ ] **2.9** Records are validated individually, *then* folded last-valid-wins. Not the reverse. **§6**
 - [ ] **2.10** Reconciliation runs in both directions against SQLite. **§6**
 - [ ] **2.11** Stored dimensionality is checked against the live embedder.
+- [ ] **2.11a** `writePayload` is one call taking vectors *and* ids, with no position parameter: the slot map allocates and the vector file follows its returned range. Two calls with two `start` arguments can drift, and then slot N holds one document's vector while `map.bin` says it belongs to another — both files internally consistent, nothing to validate against. **§7**
+- [ ] **2.11b** `DocumentLog.append` mints the sequence from `nextSequence`; callers never pass one. A duplicate sequence makes last-write-wins a coin flip that only shows up after a reload. **§7, §8**
 - [ ] **2.12** Capacity is derived from file length, never stored. Differing file lengths resolve to the minimum and are re-grown before any write. **§4, §6**
 - [ ] **2.12a** `slotCount` is clamped to the derived capacity on read. A torn header can read large, and an unclamped scan runs off the end of the mapping. **§6**
+- [ ] **2.12b** There is no `pendingSlotCount`. The in-memory count *is* `slotMap.count`; only `durableSlotCount` is stored, because only it describes something on disk that memory cannot derive. **§5, §7**
+- [ ] **2.12c** `Header.slotCount` is built from `entries.count` at encode time, not carried on the in-memory header. A stored copy has to be re-synced by every write path — the `cachedPieceCount` bug, one level down. **§4**
+- [ ] **2.12d** `durableSlotCount` is reassigned after a compaction swap. Every slot was renumbered and the count shrank; the stale value makes the next flush a no-op and lets the §6 record gate accept ranges past the end of the new file. **§12**
 - [ ] **2.13** Orphaned generations are swept.
 
 ### Mutate

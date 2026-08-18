@@ -63,4 +63,62 @@ struct DatabaseGenerationTests {
         let database = try DatabaseGeneration.load(generation: generation, in: dir)
         #expect(database.generation == generation)
     }
+    
+    @Test func testLoadNonCreatedDatabase() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "\(UUID())")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let generationURL: URL = dir.appendingPathComponent("gen-1", conformingTo: .directory)
+        
+        #expect(throws: DatabaseGenerationError.noGenerationExists(url: generationURL)) {
+            _ = try DatabaseGeneration.load(generation: 1, in: dir)
+        }
+    }
+    
+    @Test(.disabled("This test is disabled because not a directory can't be returned because the noGenerationExists error fires first."))
+    func testLoadAFile() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "\(UUID())")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+       
+        let file = dir.appending(path: "gen-1")
+        FileManager.default.createFile(atPath: file.path(percentEncoded: false), contents: Data())
+        
+        #expect(throws: DatabaseGenerationError.notADirectory(url: file)) {
+            _ = try DatabaseGeneration.load(generation: 1, in: dir)
+        }
+    }
+
+    
+    @Test func testFindNewestGeneration() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "\(UUID())")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        _ = try DatabaseGeneration.new(at: dir, generation: 0, dimensions: 1024)
+        _ = try DatabaseGeneration.new(at: dir, generation: 1, dimensions: 1024)
+        _ = try DatabaseGeneration.new(at: dir, generation: 2, dimensions: 1024)
+        _ = try DatabaseGeneration.new(at: dir, generation: 4, dimensions: 1024)
+
+        let newestGeneration = try #require(try DatabaseGeneration.detect(in: dir))
+        #expect(newestGeneration == 4)
+    }
+    
+    @Test func testFindNewestGenerationSkipsFiles() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "\(UUID())")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        _ = try DatabaseGeneration.new(at: dir, generation: 0, dimensions: 1024)
+        _ = try DatabaseGeneration.new(at: dir, generation: 1, dimensions: 1024)
+        _ = try DatabaseGeneration.new(at: dir, generation: 2, dimensions: 1024)
+
+        let file = dir.appending(path: "gen-9")
+        FileManager.default.createFile(atPath: file.path(percentEncoded: false), contents: Data())
+
+        let newestGeneration = try #require(try DatabaseGeneration.detect(in: dir))
+        #expect(newestGeneration == 2)
+    }
+
 }

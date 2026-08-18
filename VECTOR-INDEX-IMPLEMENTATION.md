@@ -14,9 +14,10 @@ Read §1 and §6 first. Everything else is mechanical; those two are where the c
 | --- | --- | --- |
 | `BinaryFile` | `Vector Index/Accelerate/BinaryFile.swift` | Wraps one `FileHandle`. The cursor lives here and nowhere else. |
 | `Durability` | `Vector Index/Accelerate/Durability.swift` | `sync()` via Foundation; `fullSync()`/`syncDirectory()` are Darwin shims |
-| `VectorFile` | `Vector Index/Accelerate/VectorFile.swift` | `[capacity × d]` float32 matrix |
-| `SlotMapFile` | `Vector Index/Accelerate/SlotMapFile.swift` | slot → piece rowid; **owns the authoritative `slotCount`** |
-| `DocumentLogFile` | `Vector Index/Accelerate/DocumentLogFile.swift` | append-only log of 64-byte document records |
+| `VectorFile` | `Vector Index/Accelerate/VectorFile.swift` | `[capacity × d]` float32 matrix. Mapped for reads, `BinaryFile` for writes |
+| `SlotMap` | `Vector Index/Accelerate/SlotMap.swift` | slot → piece rowid; **owns the authoritative `slotCount`** |
+| `DocumentMap` | `Vector Index/Accelerate/DocumentMap.swift` | the *fold* of the document log: one live range per uuid |
+| `DocumentLog` | `Vector Index/Accelerate/DocumentLog.swift` | the append-only file of 64-byte records; owns a `DocumentMap` |
 | `Generation` | `Vector Index/Accelerate/Generation.swift` | the three files + their directory, opened together |
 | `TiledScan` | `Vector Index/Accelerate/TiledScan.swift` | parallel tiled sgemv + top-k merge |
 | `AccelerateIndex` | `Vector Index/Accelerate/AccelerateIndex.swift` | `VectorIndex` conformance; owns the current `Generation` |
@@ -139,6 +140,31 @@ try mapping.withUnsafeBytes { raw in
 }
 ```
 
+**The mapping is `MAP_PRIVATE`, so it does not see writes made through the file handle.** This is the
+single most surprising property of the design and it is load-bearing: a scan must see vectors written
+earlier in the same session, and it will not. Measured on Darwin — write four bytes through a
+`FileHandle`, read the same offset through an existing `.alwaysMapped` `Data`:
+
+```
+1. page not faulted before the write:  STALE
+2. page faulted before the write:      STALE
+3. append past EOF: mapping.count UNCHANGED — growth is invisible
+5. 64 write-after-read pages:          64 stale, 0 visible
+```
+
+Not "sometimes", not "under memory pressure" — never, 64 out of 64. Re-reading the file picks
+everything up. So **`VectorFile.write` must remap before it returns**, not only `grow`:
+
+```
+try file.write(data: Data(raw), at: byteOffset(ofSlot: start))
+try remap()          // REQUIRED. Without it every freshly written vector scores 0.0 against
+                     // the zero-fill that was there when the mapping was taken.
+```
+
+The cost is address-space bookkeeping, not I/O, because `mmap` is lazy: **0.13 ms on an 88 MB file**,
+against the milliseconds of embedding that produced those vectors. Do not try to defer it to `flush` —
+readers see a document the moment `slotMap.count` advances, which is before the flush.
+
 Two assumptions worth asserting once rather than trusting: the mapped `Data` is contiguous (true for a
 mapped file, so `withUnsafeBytes` does not flatten and copy), and `VectorFile.headerSize` is
 page-aligned so the matrix base is too.
@@ -148,6 +174,15 @@ page-aligned so the matrix base is too.
 ## 4. Headers and records
 
 Keep the existing `StorageHeader` protocol and version-byte dispatch. Fix the three prototype bugs by construction: magic is bytes not a `String`, `byteSize` is a literal the layout is asserted against, and the version is read from offset 4 (after the magic), not offset 0.
+
+**Byte order, and what it costs in portability.** Metadata in `map.bin` and `documents.bin` is
+little-endian: those files materialise through `store`/`load`, where the swap is free and stating the
+contract in code is worth doing. `vectors.bin` is **host byte order** and cannot be otherwise — its
+bytes go straight to Accelerate out of a mapping, and swapping them would mean materialising the whole
+matrix, the one thing this design forbids. So the index is *not* portable across endianness, and the
+failure would be silent: headers parse, then every distance comes back as nonsense. Every target that
+matters is little-endian; write this down rather than let the careful `.littleEndian` in the metadata
+imply a portability that does not exist.
 
 ```
 // vectors.bin — header padded to a page so the matrix base is page-aligned.
@@ -164,7 +199,10 @@ VectorFile.headerSize = 4096
 SlotMapFile.headerSize = 64
   0   magic       "IMAP"
   4   version     u8 + 3 pad
-  8   slotCount     u64   ← THE AUTHORITATIVE COUNT AND THE COMMIT POINT
+  8   slotCount     u64   ← THE AUTHORITATIVE COUNT AND THE COMMIT POINT.
+                            Built from `entries.count` when the header is encoded, NOT stored on
+                            the in-memory Header — a stored copy must be re-synced by every write
+                            path, which is the bug `cachedPieceCount` already taught us.
   16  generation    u64
   24  cleanShutdown u8 + 3 pad
   28  crc32         u32   // over bytes 0..<28
@@ -177,6 +215,14 @@ SlotMapFile.headerSize = 64
 // documents.bin — append-only log. Read once at open, appended thereafter. NEVER mmap'd,
 // so it has no capacity and is never pre-grown. Header is write-once, so no CRC.
 DocumentLogFile.headerSize = 64, recordSize = 64
+// Offset convention, because the two halves disagree and it is not guessable:
+//   `load(at:)`  is RELATIVE to startIndex — it rebases, so pass the bare field offset.
+//   `store(at:)` and array subscripts are ABSOLUTE — they need `base` added.
+// So a header decoder reads `bytes.load(at: Offset.version)` but slices
+// `bytes[base ..< base + magic.count]`. Adding `base` to a load counts startIndex twice: inert
+// while the parameter is `[UInt8]`, wrong the moment it is a slice.
+// A *record* decoder is the exception — its `base` is a record offset inside the buffer rather
+// than a startIndex, so `load(at: base + Offset.x)` is correct there.
   header:
     0   magic       "IDOC"
     4   version     u8 + 3 pad
@@ -227,8 +273,9 @@ final class AccelerateIndex: VectorIndex {     // final class, NOT an actor, NOT
     private var generation: Generation          // the three open files + their mapping
     private var lockFD: Int32                   // flock(LOCK_EX|LOCK_NB) on writer.lock
 
-    // Group commit: in-memory count runs ahead of the durable one.
-    private var pendingSlotCount: UInt64        // published to readers
+    // Group commit: the in-memory count runs ahead of the durable one. Only the durable one is
+    // stored — the in-memory count IS `generation.map.count`, and a second copy of it is the
+    // `cachedPieceCount` shape: two variables for one fact, updated by different code paths.
     private var durableSlotCount: UInt64        // last value fsynced into map.bin's header
     private var appendsSinceFlush: Int
 
@@ -269,10 +316,10 @@ func open(root, dimensions, dbPool) throws {
     // Clamp rather than trust. A torn header write can yield a garbage slotCount; if it reads
     // large, an unclamped scan runs off the end of the mapping. This is the check that actually
     // protects you — the header CRC protects your ability to trust `cleanShutdown`.
+    // Loading the slot map reads exactly `slotCount` entries, so `generation.map.count` is the
+    // in-memory count from here on. deadCount is not stored either — tombstones are counted during
+    // that same load pass, which already touches every entry, so it cannot inherit drift.
     durableSlotCount = min(generation.map.slotCount, capacity)
-    // deadCount is not stored. Count tombstones while loading the entries — that pass already
-    // touches every one of them, so this is free, and it cannot inherit drift from a previous run.
-    pendingSlotCount = durableSlotCount
 
     let wasClean = generation.map.cleanShutdown
     try generation.map.clearCleanShutdown()   // set again only on an orderly close
@@ -282,7 +329,11 @@ func open(root, dimensions, dbPool) throws {
     for record in generation.documents.records() {
         guard record.crcValid else { continue }                            // torn append
         guard record.slotStart <= record.slotEnd else { continue }        // no arithmetic on
-        guard record.slotEnd <= durableSlotCount else { continue }        // untrusted bytes
+        guard record.slotEnd <= durableSlotCount else { continue }        // untrusted bytes.
+                                                                          // This is exactly the
+                                                                          // `maximumSlotCount`
+                                                                          // parameter DocumentMap
+                                                                          // takes at decode.
         valid.append(record)
     }
     truncatePartialTrailingRecord(generation.documents)   // file length not a multiple of 64
@@ -351,33 +402,40 @@ func addDocument(document: IrisDocument) throws {   // synchronous. no await, an
     // LIVE. Skip the record and reconcile (§6) sees it in SQLite but not in the log, queues it for
     // re-index, gets zero vectors again, and repeats on every subsequent open — forever.
 
-    // 2. Reserve. Synchronous, so no other writer can observe the same start.
-    let start = pendingSlotCount
-    try faultInjector?(.afterReserve)
-
-    // 3. Grow. map.bin FIRST — it is tiny, and a crash between the two ftruncates must never
+    // 2. Grow. map.bin FIRST — it is tiny, and a crash between the two ftruncates must never
     //    leave the map smaller than the vectors file. Capacity is derived from file length.
+    let start = generation.map.count            // NOT a stored counter. See §5.
+    try faultInjector?(.afterReserve)
     if start + n > generation.derivedCapacity {
         let newCapacity = max(start + n, generation.derivedCapacity * 2)
         try generation.map.grow(to: newCapacity)          // truncate(atOffset:) + re-read the mapping
         try generation.vectors.grow(to: newCapacity)
     }
 
-    // 4. Write payload through BinaryFile; the mapping stays read-only. This RETURNS the range it
-    //    wrote — the record is built from the return value, never from the document. That is what
-    //    makes the pieces.count mistake unrepresentable rather than merely asserted against.
-    let slots: Range<UInt64> = try generation.writePayload(vectors: vectors, ids: ids, at: start)
+    // 3. Write payload through BinaryFile; the mapping stays read-only. ONE call writes both files,
+    //    so there is no second position parameter for them to disagree about — the slot map
+    //    allocates and the vector file follows its range. It RETURNS the range it wrote, so the
+    //    record is built from the return value and never from the document. Both mistakes —
+    //    pieces.count, and the two files drifting apart — become unrepresentable rather than
+    //    asserted against.
+    //
+    //    func writePayload(vectors:ids:) -> Range<Int> {
+    //        precondition(vectors.count == ids.count)
+    //        let slots = map.append(contentsOf: ids)              // allocates
+    //        try self.vectors.write(vectors: vectors, at: slots.lowerBound)   // follows, then remaps
+    //        return slots
+    //    }
+    let slots: Range<Int> = try generation.writePayload(vectors: vectors, ids: ids)
     try faultInjector?(.afterMapWrite)
 
-    // 5. Append the document record, built from `slots`.
-    let record = Record(uuid: document.uuid, documentID: document.id,
-                        slots: slots, seq: nextSeq, live: true)
-    try generation.documents.append(record)
-    nextSeq += 1
+    // 4. Append the document record, built from `slots`. The log mints the sequence from its own
+    //    `nextSequence` — callers never pass one, so a duplicate seq (which makes last-write-wins a
+    //    coin flip) is unrepresentable. `map.apply` advances the counter; there is no `nextSeq += 1`.
+    try generation.documents.append(uuid: document.uuid, documentID: document.id,
+                                    slots: slots, live: true)
 
-    // 6. Publish in memory. Readers see it now; durability comes at flush.
-    pendingSlotCount = slots.upperBound
-    ranges[document.uuid] = DocumentRange(record)
+    // 5. Publish in memory. Readers see it now; durability comes at flush. There is nothing to
+    //    assign — `map.append` in step 3 already advanced the count readers scan.
     appendsSinceFlush += 1
 
     if appendsSinceFlush >= flushThreshold { try flush() }
@@ -388,7 +446,7 @@ func addDocument(document: IrisDocument) throws {   // synchronous. no await, an
 
 ```
 func flush() throws {
-    guard pendingSlotCount != durableSlotCount else { return }
+    guard generation.map.count != durableSlotCount else { return }
 
     // Payload ordered ahead of the count. Plain fsync, ~0.033 ms each — see §2 for why this is
     // the right primitive here and fullSync is not.
@@ -397,11 +455,11 @@ func flush() throws {
     Durability.sync(generation.documents.fd)
     try faultInjector?(.beforeSlotCountBump)
 
-    try generation.map.writeHeaderSlotCount(pendingSlotCount)   // ← THE COMMIT
-    Durability.sync(generation.map.fd)
+    try generation.map.writeHeader()             // ← THE COMMIT. slotCount is built from
+    Durability.sync(generation.map.fd)           //   map.count at encode time, not stored.
     try faultInjector?(.afterSlotCountBump)
 
-    durableSlotCount = pendingSlotCount
+    durableSlotCount = generation.map.count
     appendsSinceFlush = 0
 }
 ```
@@ -432,8 +490,9 @@ func removeDocument(documentID uuid: UUID) throws {
     try flush()
 
     // vectors.bin is NOT touched. ~1 KB written instead of a 289 MB rewrite.
-    // Guard the divisor: 0/0 is NaN, and NaN silently fails every comparison.
-    if pendingSlotCount > 0, Double(deadCount) / Double(pendingSlotCount) > 0.25 { scheduleCompaction() }
+    // `deadFraction` returns 0 on an empty map, so the 0/0 → NaN guard lives inside SlotMap
+    // rather than being re-derived (and forgotten) at each call site.
+    if generation.map.deadFraction > 0.25 { scheduleCompaction() }
 }
 ```
 
@@ -460,7 +519,7 @@ Tombstoning first and crashing before the new range is durable leaves the docume
 func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
     var q = query; normalizeL2(&q)
 
-    let rows = Int(pendingSlotCount)          // ← NOT capacity. ftruncate zero-fills, and a zero
+    let rows = generation.map.count           // ← NOT capacity. ftruncate zero-fills, and a zero
                                               //   vector scores exactly 0.0, outranking every
                                               //   legitimately negative cosine.
     if rows == 0 { return [] }
@@ -475,8 +534,7 @@ func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)
     let tiles = stride(from: 0, to: rows, by: tileRows)
 
     // Dead slots consume the top-k budget, so widen by the dead fraction before selecting.
-    let deadFraction = Double(generation.map.deadCount) / Double(rows)
-    let widened = Int(Double(k) * (1.0 + deadFraction)) + 1
+    let widened = Int(Double(k) * (1.0 + generation.map.deadFraction)) + 1
 
     var perTile = [TopK?](repeating: nil, count: tiles.count)
     DispatchQueue.concurrentPerform(iterations: tiles.count) { t in
@@ -536,7 +594,7 @@ func compact() throws {
     try flush()
 
     // --- phase 1: off-actor, unbounded work over a frozen prefix ---
-    let snapshot = pendingSlotCount
+    let snapshot = generation.map.count
     let next = generation.number + 1
     let dir = root/"index-\(next)"
     buildCompacted(from: generation, slots: 0..<snapshot, into: dir)   // live slots only, renumbered,
@@ -546,8 +604,8 @@ func compact() throws {
     Durability.syncDirectory(dir)
 
     // --- phase 2: back on the actor, synchronous, no await from here to the rename ---
-    replay(slots: snapshot ..< pendingSlotCount, into: dir)   // bounded and small
-    dir.map.writeHeaderSlotCount(newCount)
+    replay(slots: snapshot ..< generation.map.count, into: dir)   // bounded and small
+    dir.map.writeHeader()
     Durability.fullSync(dir.map.fd)
 
     try faultInjector?(.beforeCurrentRename)
@@ -556,8 +614,13 @@ func compact() throws {
     try faultInjector?(.afterCurrentRename)
 
     generation = Generation.open(dir)
-    ranges = foldRanges(dir.documents)              // slot numbers all changed
+    durableSlotCount = generation.map.count         // MUST be reset. Every slot was renumbered and
+                                                    // the count shrank; leaving the old value makes
+                                                    // the next flush a no-op and the record gate in
+                                                    // §6 accept ranges past the end of the new file.
     deleteGeneration(number: next - 1)              // if this is interrupted, open() sweeps it
+                                                    // (`ranges` comes back with the reopened
+                                                    //  generation's DocumentMap — slots all changed)
 }
 ```
 

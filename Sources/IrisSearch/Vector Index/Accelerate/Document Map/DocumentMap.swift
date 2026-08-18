@@ -16,6 +16,7 @@ enum DocumentMapError: Error {
     case checksumMismatch(found: UInt32, expected: UInt32)
     case recordPastMaximumSlots(recordEnd: Int, maximumSlots: Int)
     case recordStartAfterRecordEnd(recordStart: Int, recordEnd: Int)
+    case rangeDoesNotExist(uuid: UUID)
 }
 
 final class DocumentMap: DataExpressible {
@@ -23,6 +24,8 @@ final class DocumentMap: DataExpressible {
         let id: UInt64
         let startSlot: Int
         let endSlot: Int
+        
+        var range: Range<Int> { startSlot..<endSlot }
         
         init(_ record: Record) {
             id = record.documentID
@@ -61,11 +64,11 @@ final class DocumentMap: DataExpressible {
         var sequence: UInt64
         var flags: Flags
         
-        init(uuid: UUID, documentID: UInt64, slotStart: UInt64, slotEnd: UInt64, sequence: UInt64, flags: Flags) {
+        init(uuid: UUID, documentID: UInt64, startSlot: UInt64, endSlot: UInt64, sequence: UInt64, flags: Flags) {
             self.uuid = uuid
             self.documentID = documentID
-            self.startSlot = slotStart
-            self.endSlot = slotEnd
+            self.startSlot = startSlot
+            self.endSlot = endSlot
             self.sequence = sequence
             self.flags = flags
         }
@@ -185,7 +188,7 @@ final class DocumentMap: DataExpressible {
     
     private(set) var ranges: [UUID: DocumentRange]
     private(set) var deadCount: Int = 0
-    private(set) var nextSequence: Int = 0
+    private(set) var nextSequence: UInt64 = 0
 
     private(set) var header: DocumentMap.Header
     
@@ -227,7 +230,7 @@ final class DocumentMap: DataExpressible {
             ranges[record.uuid] = record.isLive ? DocumentRange(record) : nil
             
             if Int(record.sequence) > nextSequence {
-                nextSequence = Int(record.sequence)
+                nextSequence = record.sequence
             }
         }
         
@@ -240,7 +243,7 @@ final class DocumentMap: DataExpressible {
         
         // Do NOT use keypath here, it slows the code down by 45x
         for (uuid, range) in ranges {
-            let record = Record(uuid: uuid, documentID: range.id, slotStart: UInt64(range.startSlot), slotEnd: UInt64(range.endSlot), sequence: UInt64(nextSequence), flags: [.live])
+            let record = Record(uuid: uuid, documentID: range.id, startSlot: UInt64(range.startSlot), endSlot: UInt64(range.endSlot), sequence: UInt64(nextSequence), flags: [.live])
             record.encode(into: &bytes)
             nextSequence += 1
         }
@@ -257,6 +260,6 @@ final class DocumentMap: DataExpressible {
 extension DocumentMap {
     func apply(record: DocumentMap.Record) {
         ranges[record.uuid] = record.isLive ? DocumentRange(record) : nil
-        nextSequence = max(nextSequence, Int(record.sequence) + 1)
+        nextSequence = max(nextSequence, record.sequence + 1)
     }
 }

@@ -364,7 +364,7 @@ extension IrisDB {
             return (newDocument, oldPieceIDs)
         }
 
-        try textIndex.removeDocument(documentID: uuid, pieceIDs: oldPieceIDs)
+        try textIndex.removeDocument(documentUUID: uuid, documentID: updatedDocument.id ?? 0, pieceIDs: oldPieceIDs)
         try textIndex.addDocument(document: updatedDocument)
 
         // An update swaps the whole piece set, so the row count moves by the difference between the two.
@@ -399,7 +399,7 @@ extension IrisDB {
         // Remove the document we just deleted from the global index
         if let tmpDocument {
             let oldIDs = tmpDocument.pieces.compactMap(\.id).map({ Int($0) })
-            try textIndex.removeDocument(documentID: uuid, pieceIDs: oldIDs)
+            try textIndex.removeDocument(documentUUID: uuid, documentID: tmpDocument.id ?? 0, pieceIDs: oldIDs)
 
             // Remove the count of document pieces from the cached amount.
             if let cachedPieceCount {

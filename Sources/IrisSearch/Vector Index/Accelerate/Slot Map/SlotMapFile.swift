@@ -9,13 +9,13 @@ import Foundation
 
 final class SlotMapFile {
     let file: BinaryFile
-    let header: SlotMap
+    let map: SlotMap
     let url: URL
 
     public init(url: URL) throws {
         self.url = url
         let data = try Data.init(contentsOf: url)
-        header = try SlotMap(bytes: data.byteArray, fileSize: data.count)
+        map = try SlotMap(bytes: data.byteArray, fileSize: data.count)
         file = try BinaryFile(url: url)
     }
     

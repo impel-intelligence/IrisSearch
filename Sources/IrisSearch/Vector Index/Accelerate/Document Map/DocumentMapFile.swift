@@ -9,13 +9,13 @@ import Foundation
 
 final class DocumentMapFile {
     let file: BinaryFile
-    let header: DocumentMap
+    let map: DocumentMap
     let url: URL
 
     public init(url: URL, maximumSlotCount: Int) throws {
         self.url = url
         let data = try Data.init(contentsOf: url)
-        header = try DocumentMap(bytes: data.byteArray, maximumSlotCount: maximumSlotCount)
+        map = try DocumentMap(bytes: data.byteArray, maximumSlotCount: maximumSlotCount)
         file = try BinaryFile(url: url)
     }
     
@@ -26,5 +26,33 @@ final class DocumentMapFile {
         let data = Data(emptyFile)
         try data.write(to: url, options: .withoutOverwriting)
         return try DocumentMapFile(url: url, maximumSlotCount: maximumSlotCount)
+    }
+}
+
+// MARK: Writing
+extension DocumentMapFile {
+    @discardableResult
+    func append(uuid: UUID, documentID: UInt64, slots: Range<Int>, live: Bool) throws -> DocumentMap.Record {
+        let record = DocumentMap.Record(uuid: uuid,
+                                        documentID: documentID,
+                                        startSlot: UInt64(slots.lowerBound),
+                                        endSlot: UInt64(slots.upperBound),
+                                        sequence: map.nextSequence,
+                                        flags: live ? [.live] : .empty)
+
+        try file.append(data: Data(record.encoded()))
+        map.apply(record: record)
+        return record
+    }
+    
+    @discardableResult
+    func remove(uuid: UUID, documentID: UInt64) throws -> Range<Int> {
+        guard let documentRange = map.ranges[uuid] else {
+            throw DocumentMapError.rangeDoesNotExist(uuid: uuid)
+        }
+        
+        try append(uuid: uuid, documentID: documentID, slots: documentRange.range, live: false)
+        
+        return documentRange.range
     }
 }

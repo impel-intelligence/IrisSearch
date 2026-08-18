@@ -8,38 +8,122 @@
 import Foundation
 import IrisCommon
 
-//final class AccelerateIndex: VectorIndex {
-//    private var embeddingProvider: EmbeddingProvider
-//    private var indexLocation: URL
-//    
-//    private var vectorStore: VectorStoreFile
-//    private var slotMap: SlotMap
-//    private var documentMap: DocumentMap
-//
-//    init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
-//        self.indexLocation = indexLocation
-//        self.embeddingProvider = embeddingProvider
-//        
-//        
-//        
-////        vectorStore = try VectorStoreFile.new(at: <#T##URL#>, dimensions: <#T##UInt64#>)
-//    }
-//    
-//    func addDocument(document: IrisDocument) throws {
-//        <#code#>
-//    }
-//    
-//    func removeDocument(documentID: UUID, pieceIDs: [Int]) throws {
-//        <#code#>
-//    }
-//    
-//    func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
-//        <#code#>
-//    }
-//    
-//    func search(query: [Float], kItems k: Int, collection: UUID) throws -> [(id: Int, distance: Float)] {
-//        <#code#>
-//    }
-//    
-//    
-//}
+enum AccelerateIndexError: Error {
+    case mismatchedDimensions(found: Int, expected: Int)
+    case embeddingIdLengthMismatch(embeddings: Int, ids: Int)
+}
+
+final class AccelerateIndex: VectorIndex {
+    private var embeddingProvider: EmbeddingProvider
+    private var indexLocation: URL
+    
+    private var generation: DatabaseGeneration
+    
+    private static let syncThreshold: Int = 32
+    
+    /// How many appends have happened since the last sync to disk
+    private var appendsSinceSync: Int = 0
+    
+    /// The count of slots that have been confirmed to be synced to disk.
+    private var durableSlotCount: Int = 0
+
+    init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
+        self.indexLocation = indexLocation
+        self.embeddingProvider = embeddingProvider
+        
+        let currentGeneration = try DatabaseGeneration.detect(in: indexLocation)
+    
+        if let currentGeneration {
+            generation = try DatabaseGeneration.load(generation: currentGeneration, in: indexLocation)
+        } else {
+            generation = try DatabaseGeneration.new(at: indexLocation, generation: 0, dimensions: UInt64(embeddingProvider.dimension))
+        }
+    }
+}
+
+// MARK: Document Management
+extension AccelerateIndex {
+    func addDocument(document: IrisDocument) throws {
+        var embeddings: [[Float]] = []
+        var ids: [UInt64] = []
+        
+        // For each embedding in the document, add it with the pieces's rowID as its ID
+        // TODO: Remove empty embeddings dodge. It is here because images are not currently embedded.
+        for piece in document.pieces where !piece.embeddings.isEmpty {
+            guard let pieceID = piece.id else { continue }
+                        
+            // Make sure that the dimensions for this vector are correct.
+            guard piece.embeddings.count == self.embeddingProvider.dimension else {
+                throw AccelerateIndexError.mismatchedDimensions(found: piece.embeddings.count, expected: generation.vectorStore.dimensions)
+            }
+            
+            let normalized = l2Normalize(vector: piece.embeddings)
+            embeddings.append(normalized)
+            ids.append(UInt64(pieceID))
+        }
+        
+        // Write the IDs to the database
+        guard embeddings.count == ids.count else {
+            throw AccelerateIndexError.embeddingIdLengthMismatch(embeddings: embeddings.count, ids: ids.count)
+        }
+
+        let slots = generation.slotMap.map.append(contentsOf: ids)
+        _ = try generation.vectorStore.write(vectors: embeddings, at: slots.lowerBound)
+
+        try generation.documentMap.append(uuid: document.uuid, documentID: UInt64(document.id ?? 0), slots: slots, live: true)
+        appendsSinceSync += 1
+    }
+    
+    func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {
+        let range = try generation.documentMap.remove(uuid:documentUUID, documentID: UInt64(documentID))
+        generation.slotMap.map.tombstone(range: range)
+        appendsSinceSync += 1
+        
+        if appendsSinceSync > Self.syncThreshold {
+            sync()
+        }
+    }
+    
+    func sync() {
+        
+    }
+}
+
+// MARK: Search
+extension AccelerateIndex {
+    func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
+        <#code#>
+    }
+    
+    func search(query: [Float], kItems k: Int, collection: UUID) throws -> [(id: Int, distance: Float)] {
+        <#code#>
+    }
+
+}
+
+extension AccelerateIndex {
+    /// l2 normalize a vector, if it is already normalized return the normal vector.
+    /// - Parameter vector: The vector to normalize.
+    /// - Returns: An l2 normalized vector, if already normalized the original vector.
+    func l2Normalize(vector: [Float]) -> [Float] {
+        // Calculate the sum of the the square of each dimension in the vector.
+        var squareSum: Float = vector.reduce(0.0) { partialResult, float in
+            partialResult + (float * float)
+        }
+                
+        let norm = sqrt(squareSum)
+        
+        // The vector is already normalized so just return it
+        guard norm != 0 else { return vector }
+        
+        // Make vector mutable
+        var vector = vector
+
+        // Normalize each dimension of the vector
+        for index in 0..<vector.count {
+            vector[index] /= norm
+        }
+
+        return vector
+    }
+}

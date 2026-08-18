@@ -56,13 +56,13 @@ final class FaissIndex: VectorIndex {
         try addDocumentToGlobalIndex(document: document)
     }
     
-    public func removeDocument(documentID: UUID, pieceIDs: [Int]) throws {
-        let indexURL = IndexLocation.document(uuid: documentID).filePath(in: indexLocation)
+    public func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {
+        let indexURL = IndexLocation.document(uuid: documentUUID).filePath(in: indexLocation)
         try FileManager.default.removeItem(at: indexURL)
         
         try removeDocumentFromGlobalIndex(ids: pieceIDs)
         // Remove the cached index for the document.
-        cachedDocumentIndices.removeValue(forKey: documentID)
+        cachedDocumentIndices.removeValue(forKey: documentUUID)
     }
 }
 

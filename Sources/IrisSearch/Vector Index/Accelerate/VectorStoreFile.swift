@@ -168,7 +168,7 @@ extension VectorStoreFile {
         return UInt64(Header.byteCount + (slot * slotByteCount))
     }
         
-    public func reserve(slot: Int) throws {
+    public func reserve(upTo slot: Int) throws {
         let newOffset = byteOffset(for: slot)
         try self.grow(to: newOffset)
     }
