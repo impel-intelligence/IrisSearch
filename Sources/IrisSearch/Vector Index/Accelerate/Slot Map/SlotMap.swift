@@ -18,6 +18,16 @@ enum SlotMapError: Error {
     case tombstoneOutOfRange(range: Range<Int>, real: Range<Int>)
 }
 
+protocol WriteStrategy {
+    func write(bytes: [UInt8], at offset: UInt64) throws
+}
+
+extension BinaryFile: WriteStrategy {
+    func write(bytes: [UInt8], at offset: UInt64) throws {
+        try self.write(data: Data(bytes), at: offset)
+    }
+}
+
 /// An index map of Piece IDs to their index within the vector store.
 final class SlotMap: DataExpressible {
     struct Header: DataExpressible {
@@ -42,9 +52,9 @@ final class SlotMap: DataExpressible {
         static let byteCount: Int = 64
         static let version: UInt32 = 1
         
-        var slotCount: Int
-        var generation: UInt64
-        var flags: Flags
+        let slotCount: Int
+        let generation: UInt64
+        let flags: Flags
         
         public init(slotCount: Int, generation: UInt64, flags: Flags) {
             self.slotCount = slotCount
@@ -119,11 +129,17 @@ final class SlotMap: DataExpressible {
     }
 
     static let tombstoneValue: UInt64 = UInt64.max
+    static let acceptableDeadFraction: Double = 0.25
     
     private(set) var entries: [UInt64]
     private(set) var deadCount: Int = 0
+    private var generation: UInt64
+    private var flags: Header.Flags
     
-    private(set) var header: SlotMap.Header
+    /// A computed header that matches the most recent slot information.
+    var header: SlotMap.Header {
+        Header(slotCount: entries.count, generation: generation, flags: flags)
+    }
     
     public var count: Int { entries.count }
     public var deadFraction: Double { count == 0 ? 0 : Double(deadCount) / Double(count) }
@@ -134,19 +150,20 @@ final class SlotMap: DataExpressible {
     
     init(entries: [UInt64], generation: UInt64) {
         self.entries = entries
-        self.header = Header(slotCount: entries.count, generation: generation, flags: .empty)
+        self.flags = .empty
+        self.generation = generation
         scanDeadCount()
     }
     
     init(bytes: [UInt8]) throws {
         precondition(SlotMap.Header.byteCount % MemoryLayout<UInt64>.alignment == 0, "Entries must start aligned for bindMemory")
-        header = try SlotMap.Header(bytes: bytes)
-        let expectedSlotEnd = Offset.pieceIDs + (header.slotCount * MemoryLayout<UInt64>.size)
+        let decodedHeader = try SlotMap.Header(bytes: bytes)
+        
+        let expectedSlotEnd = Offset.pieceIDs + (decodedHeader.slotCount * MemoryLayout<UInt64>.size)
         let slotCapacity = max(0, bytes.count - Offset.pieceIDs) / MemoryLayout<UInt64>.size
         
         guard expectedSlotEnd > Offset.pieceIDs, expectedSlotEnd < slotCapacity else {
             throw SlotMapError.slotCountExceedsFileSize(declaredSlots: expectedSlotEnd, maximumSlots: slotCapacity)
-            return
         }
         
         // Remap the rest of the bytes into a little endian UInt64 array.
@@ -156,6 +173,9 @@ final class SlotMap: DataExpressible {
             return array.map { UInt64(littleEndian: $0) }
         }
         
+        self.generation = decodedHeader.generation
+        self.flags = decodedHeader.flags
+        
         scanDeadCount()
     }
     
@@ -163,10 +183,9 @@ final class SlotMap: DataExpressible {
         deadCount = entries.count { $0 == SlotMap.tombstoneValue }
     }
     
-    /// Appends the serialized record. There is no offset parameter: the destination's current end *is* the offset, so callers cannot pass an inconsistent one.
     func encode(into bytes: inout [UInt8]) {
         header.encode(into: &bytes)
-        // Do NOT use keypath here, it slows the code down by 45x
+        // Do NOT use key path here, it slows the code down by 45x
         entries.map { $0.littleEndian }.withUnsafeBytes { bytes.append(contentsOf: $0) }
     }
 
@@ -183,30 +202,41 @@ extension SlotMap {
         return entries[slot]
     }
     
+    /// Get the byte offset for a slot in the byte representation of SlotMap.
+    /// - Parameter slot: The slot to get the offset for
+    /// - Returns: The number of bytes that need to be offset to start at `slot`.
     func byteOffset(for slot: Int) -> UInt64 {
         return UInt64(Header.byteCount + (slot * MemoryLayout<UInt64>.size))
     }
     
-    /// Append contents of a [UInt64] array
-    /// - Parameter contentsOf: The array of pieceIDs to append to the map file.
-    /// - Returns: The index range where the contents were added.
+    /// Appends the slot ids to the end of the entries list.
+    ///
+    /// After the ids are appended, the number of slots in the header is incremented.
+    ///
+    /// - Parameter ids: The ids to append.
+    /// - Returns: The range at which the IDs were inserted. Used for writing into the ``VectorStoreFile``.
     @discardableResult
-    func append(contentsOf array: [UInt64]) -> Range<Int> {
+    func append(ids: [UInt64]) -> Range<Int> {
         let startRange = entries.count
-        entries.append(contentsOf: array)
-        header.slotCount = Int(entries.count)
+        entries.append(contentsOf: ids)
         
-        return startRange..<(startRange + array.count)
+        return startRange..<(startRange + ids.count)
     }
     
+    /// "Deletes" a range of slots from the mapping.
+    ///
+    /// Internally this replaces entries with ``SlotMap/tombstoneValue``. This is because a deletion from the middle of the file would require re-writing the entire file after the deletion range. Instead of doing this, the slot map is occasionally compacted when ``SlotMap/deadFraction`` reaches ``SlotMap/acceptableDeadFraction``.
+    ///
+    /// - Parameter range: The range of slots to replace with ``SlotMap/tombstoneValue``
     func tombstone(range: Range<Int>) {
         guard range.lowerBound >= 0 && range.upperBound <= count else { return }
         var newlyDead = 0
         for slot in range where entries[slot] != SlotMap.tombstoneValue { newlyDead += 1 }
         deadCount += newlyDead
-        let graves = [UInt64](repeating: SlotMap.tombstoneValue.littleEndian, count: range.count)
+        
+        let tombstones = [UInt64](repeating: SlotMap.tombstoneValue.littleEndian, count: range.count)
 
-        entries.replaceSubrange(range, with: graves)
+        entries.replaceSubrange(range, with: tombstones)
     }
     
     func isLive(_ slot: Int) -> Bool {

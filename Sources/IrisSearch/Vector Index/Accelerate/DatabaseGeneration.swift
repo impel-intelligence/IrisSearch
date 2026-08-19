@@ -17,22 +17,15 @@ final class DatabaseGeneration {
     public var generation: UInt64
     public var vectorStore: VectorStoreFile
     public var slotMap: SlotMapFile
-    public var documentMap: DocumentMapFile
+    public var documentLog: DocumentLogFile
     
     private static let syncThreshold: Int = 32
     
-    /// How many appends have happened since the last sync to disk
-    private var appendsSinceSync: Int = 0
-    
-    /// The count of slots that have been confirmed to be synced to disk.
-    private var durableSlotCount: Int = 0
+    /// How many changes have happened since the last sync to disk
+    private var changesSinceLastSync: Int = 0
 
     private var url: URL
     
-    /// <#Description#>
-    /// - Parameters:
-    ///   - generation: <#generation description#>
-    ///   - url: <#url description#>
     private init(generation: UInt64, url: URL) throws {
         self.generation = generation
         self.url = url
@@ -44,42 +37,61 @@ final class DatabaseGeneration {
         self.slotMap = try SlotMapFile(url: slotMapURL)
         
         let docMapURL = url.appending(path: "doc.bin")
-        self.documentMap = try DocumentMapFile(url: docMapURL, maximumSlotCount: slotMap.map.count)
+        self.documentLog = try DocumentLogFile(url: docMapURL, maximumSlotCount: slotMap.count)
     }
-   
 }
 
 extension DatabaseGeneration {
     public func submit(embeddings: [[Float]], ids: [UInt64], documentUUID: UUID, documentID: UInt64) throws {
-        let slots = slotMap.append(contentsOf: ids)
+        // Get slots that the embeddings can go into by adding their ids to the slot map.
+        let slots = try slotMap.append(contentsOf: ids)
         
+        // Expand the vector store to fit the new slots
         try vectorStore.reserve(upTo: slots.upperBound)
+        
+        // Write the vectors to into the start of their slot range.
         _ = try vectorStore.write(vectors: embeddings, at: slots.lowerBound)
 
-        try documentMap.append(uuid: documentUUID, documentID: documentID, slots: slots, live: true)
-        appendsSinceSync += 1
+        // Tell the document log that the region of slots has become live.
+        try documentLog.append(uuid: documentUUID, documentID: documentID, slots: slots, live: true)
         
-        if appendsSinceSync >= Self.syncThreshold {
+        // Update the number of changes
+        changesSinceLastSync += 1
+        
+        // Check to see if we need to synchronize
+        if changesSinceLastSync >= Self.syncThreshold {
             try synchronize()
         }
     }
     
     func delete(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {
-        let range = try documentMap.remove(uuid:documentUUID, documentID: UInt64(documentID))
-        slotMap.tombstone(range: range)
-        appendsSinceSync += 1
+        // Find the slot ranges for the document. This will throw if the document has no range.
+        let range = try documentLog.range(for: documentUUID)
         
-        if appendsSinceSync > Self.syncThreshold {
+        // Remove the ranges from the slot map so they will be ignored in any searches.
+        try slotMap.tombstone(range: range)
+        
+        // Append a log to the document log that marks the document as no longer live.
+        _ = try documentLog.append(uuid:documentUUID, documentID: UInt64(documentID), slots: range, live: false)
+        
+        // Update the number of changes
+        changesSinceLastSync += 1
+        
+        // Check to see if we need to synchronize
+        if changesSinceLastSync >= Self.syncThreshold {
             try synchronize()
         }
     }
     
     func synchronize() throws {
+        // First step of synchronization is to synchronize all of the content to disk. If any one of these fail, the slot map commit will not go through.
+        // If the slot map is not committed, any appends to the database will be intentionally lost on next load, then deleted during compaction.
         try vectorStore.synchronize()
-        try slotMap.file.synchronize()
-        try documentMap.file.synchronize()
+        try slotMap.synchronizeFile()
+        try documentLog.synchronizeFile()
 
-        durableSlotCount = slotMap.map.count
+        // Mark the changes synced as complete by writing the header and updating the durable tracker.
+        try slotMap.commit()
     }
 }
 
@@ -139,7 +151,7 @@ extension DatabaseGeneration {
         _ = try SlotMapFile.new(at: slotMapURL)
         
         let docMapURL = generationURL.appending(path: "doc.bin")
-        _ = try DocumentMapFile.new(at: docMapURL, maximumSlotCount: 0)
+        _ = try DocumentLogFile.new(at: docMapURL, maximumSlotCount: 0)
 
         return try DatabaseGeneration(generation: generation, url: generationURL)
     }

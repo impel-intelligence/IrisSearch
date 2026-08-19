@@ -59,6 +59,7 @@ extension AccelerateIndex {
             throw AccelerateIndexError.embeddingIdLengthMismatch(embeddings: embeddings.count, ids: ids.count)
         }
         
+        // Writes the submission to the database stores.
         try generation.submit(embeddings: embeddings, ids: ids, documentUUID: document.uuid, documentID: UInt64(document.id ?? 0))
     }
     
@@ -70,13 +71,14 @@ extension AccelerateIndex {
 // MARK: Search
 extension AccelerateIndex {
     func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
-        <#code#>
+        // TODO: Populate
+        return []
     }
     
     func search(query: [Float], kItems k: Int, collection: UUID) throws -> [(id: Int, distance: Float)] {
-        <#code#>
+        // TODO: Populate
+        return []
     }
-
 }
 
 extension AccelerateIndex {
@@ -85,7 +87,7 @@ extension AccelerateIndex {
     /// - Returns: An l2 normalized vector, if already normalized the original vector.
     func l2Normalize(vector: [Float]) -> [Float] {
         // Calculate the sum of the the square of each dimension in the vector.
-        var squareSum: Float = vector.reduce(0.0) { partialResult, float in
+        let squareSum: Float = vector.reduce(0.0) { partialResult, float in
             partialResult + (float * float)
         }
                 

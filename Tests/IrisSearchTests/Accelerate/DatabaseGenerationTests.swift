@@ -58,7 +58,7 @@ struct DatabaseGenerationTests {
         _ = try SlotMapFile.new(at: slotMapURL)
         
         let docMapURL = generationURL.appending(path: "doc.bin")
-        _ = try DocumentMapFile.new(at: docMapURL, maximumSlotCount: 0)
+        _ = try DocumentLogFile.new(at: docMapURL, maximumSlotCount: 0)
 
         let database = try DatabaseGeneration.load(generation: generation, in: dir)
         #expect(database.generation == generation)

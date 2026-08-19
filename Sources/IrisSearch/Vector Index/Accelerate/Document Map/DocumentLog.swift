@@ -19,7 +19,7 @@ enum DocumentMapError: Error {
     case rangeDoesNotExist(uuid: UUID)
 }
 
-final class DocumentMap: DataExpressible {
+final class DocumentLog: DataExpressible {
     struct DocumentRange {
         let id: UInt64
         let startSlot: Int
@@ -169,7 +169,7 @@ final class DocumentMap: DataExpressible {
             let base = bytes.count
             bytes.append(contentsOf: repeatElement(0, count: Self.byteCount))
             bytes.replaceSubrange(base ..< base + Self.magic.count, with: Self.magic)
-            bytes.store(DocumentMap.Header.version, at: base + Offset.version)
+            bytes.store(DocumentLog.Header.version, at: base + Offset.version)
             bytes.store(generation, at: base + Offset.generation)
         }
         
@@ -190,22 +190,22 @@ final class DocumentMap: DataExpressible {
     private(set) var deadCount: Int = 0
     private(set) var nextSequence: UInt64 = 0
 
-    private(set) var header: DocumentMap.Header
+    private(set) var header: DocumentLog.Header
     
     public var count: Int { ranges.count }
     public var deadFraction: Double { count == 0 ? 0 : Double(deadCount) / Double(count) }
     
     var byteCount: Int {
-        DocumentMap.Header.byteCount + (count * MemoryLayout<UInt64>.size)
+        DocumentLog.Header.byteCount + (count * MemoryLayout<UInt64>.size)
     }
     
     init(generation: UInt64) {
-        header = DocumentMap.Header(generation: generation)
+        header = DocumentLog.Header(generation: generation)
         ranges = [:]
     }
     
     init(bytes: [UInt8], maximumSlotCount: Int) throws {
-        header = try DocumentMap.Header(bytes: bytes)
+        header = try DocumentLog.Header(bytes: bytes)
         ranges = [:]
         
         let recordBytes = bytes.count - Offset.records
@@ -257,8 +257,8 @@ final class DocumentMap: DataExpressible {
     }
 }
 
-extension DocumentMap {
-    func apply(record: DocumentMap.Record) {
+extension DocumentLog {
+    func apply(record: DocumentLog.Record) {
         ranges[record.uuid] = record.isLive ? DocumentRange(record) : nil
         nextSequence = max(nextSequence, record.sequence + 1)
     }

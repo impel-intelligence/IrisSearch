@@ -474,7 +474,7 @@ On close: `flush()`, then `Durability.fullSync(generation.map.fd)`, then set `cl
 
 Ordering is the mirror of insert: make the *index* side durable first, because it is idempotent and cheap, so the surviving crash window is the recoverable direction.
 
-```
+```swift
 func removeDocument(documentID uuid: UUID) throws {
     guard let range = ranges[uuid] else { return }   // already gone; idempotent
 
@@ -482,9 +482,7 @@ func removeDocument(documentID uuid: UUID) throws {
     try generation.map.tombstone(range)                  // range is already [start, end)
     try generation.documents.append(Record(uuid: uuid, ..., seq: nextSeq, live: false))
     nextSeq += 1
-    generation.map.deadCount += range.countOfLive   // count what was LIVE, not range.count —
-                                                    // an unconditional += double-counts a repeated
-                                                    // tombstone (reconcile, or a retried delete)
+    generation.map.deadCount += range.countOfLive   // count what was LIVE, not range.count — an unconditional += double-counts a repeated tombstone (reconcile, or a retried delete)
     ranges[uuid] = nil
 
     try flush()
