@@ -27,7 +27,7 @@ final class VectorStoreFile: BinaryFile {
             static let magic = 0
             static let version = 4
             static let dimensions = 8
-            static let generation = 12
+            static let generation = 16
         }
         
         static let magic = Array("IVEC".utf8)

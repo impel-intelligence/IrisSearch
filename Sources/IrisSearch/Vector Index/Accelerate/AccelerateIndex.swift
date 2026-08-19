@@ -19,14 +19,6 @@ final class AccelerateIndex: VectorIndex {
     
     private var generation: DatabaseGeneration
     
-    private static let syncThreshold: Int = 32
-    
-    /// How many appends have happened since the last sync to disk
-    private var appendsSinceSync: Int = 0
-    
-    /// The count of slots that have been confirmed to be synced to disk.
-    private var durableSlotCount: Int = 0
-
     init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
         self.indexLocation = indexLocation
         self.embeddingProvider = embeddingProvider
@@ -51,7 +43,7 @@ extension AccelerateIndex {
         // TODO: Remove empty embeddings dodge. It is here because images are not currently embedded.
         for piece in document.pieces where !piece.embeddings.isEmpty {
             guard let pieceID = piece.id else { continue }
-                        
+            
             // Make sure that the dimensions for this vector are correct.
             guard piece.embeddings.count == self.embeddingProvider.dimension else {
                 throw AccelerateIndexError.mismatchedDimensions(found: piece.embeddings.count, expected: generation.vectorStore.dimensions)
@@ -66,26 +58,12 @@ extension AccelerateIndex {
         guard embeddings.count == ids.count else {
             throw AccelerateIndexError.embeddingIdLengthMismatch(embeddings: embeddings.count, ids: ids.count)
         }
-
-        let slots = generation.slotMap.map.append(contentsOf: ids)
-        _ = try generation.vectorStore.write(vectors: embeddings, at: slots.lowerBound)
-
-        try generation.documentMap.append(uuid: document.uuid, documentID: UInt64(document.id ?? 0), slots: slots, live: true)
-        appendsSinceSync += 1
+        
+        try generation.submit(embeddings: embeddings, ids: ids, documentUUID: document.uuid, documentID: UInt64(document.id ?? 0))
     }
     
     func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {
-        let range = try generation.documentMap.remove(uuid:documentUUID, documentID: UInt64(documentID))
-        generation.slotMap.map.tombstone(range: range)
-        appendsSinceSync += 1
-        
-        if appendsSinceSync > Self.syncThreshold {
-            sync()
-        }
-    }
-    
-    func sync() {
-        
+        try generation.delete(documentUUID: documentUUID, documentID: documentID, pieceIDs: pieceIDs)
     }
 }
 

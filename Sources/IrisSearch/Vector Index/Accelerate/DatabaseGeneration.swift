@@ -19,6 +19,14 @@ final class DatabaseGeneration {
     public var slotMap: SlotMapFile
     public var documentMap: DocumentMapFile
     
+    private static let syncThreshold: Int = 32
+    
+    /// How many appends have happened since the last sync to disk
+    private var appendsSinceSync: Int = 0
+    
+    /// The count of slots that have been confirmed to be synced to disk.
+    private var durableSlotCount: Int = 0
+
     private var url: URL
     
     /// <#Description#>
@@ -39,6 +47,40 @@ final class DatabaseGeneration {
         self.documentMap = try DocumentMapFile(url: docMapURL, maximumSlotCount: slotMap.map.count)
     }
    
+}
+
+extension DatabaseGeneration {
+    public func submit(embeddings: [[Float]], ids: [UInt64], documentUUID: UUID, documentID: UInt64) throws {
+        let slots = slotMap.append(contentsOf: ids)
+        
+        try vectorStore.reserve(upTo: slots.upperBound)
+        _ = try vectorStore.write(vectors: embeddings, at: slots.lowerBound)
+
+        try documentMap.append(uuid: documentUUID, documentID: documentID, slots: slots, live: true)
+        appendsSinceSync += 1
+        
+        if appendsSinceSync >= Self.syncThreshold {
+            try synchronize()
+        }
+    }
+    
+    func delete(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {
+        let range = try documentMap.remove(uuid:documentUUID, documentID: UInt64(documentID))
+        slotMap.tombstone(range: range)
+        appendsSinceSync += 1
+        
+        if appendsSinceSync > Self.syncThreshold {
+            try synchronize()
+        }
+    }
+    
+    func synchronize() throws {
+        try vectorStore.synchronize()
+        try slotMap.file.synchronize()
+        try documentMap.file.synchronize()
+
+        durableSlotCount = slotMap.map.count
+    }
 }
 
 

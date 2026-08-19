@@ -15,6 +15,7 @@ enum SlotMapError: Error {
     case unsupportedVersion(found: UInt32, supported: UInt32)
     case checksumMismatch(found: UInt32, expected: UInt32)
     case slotCountExceedsFileSize(declaredSlots: Int, maximumSlots: Int)
+    case tombstoneOutOfRange(range: Range<Int>, real: Range<Int>)
 }
 
 /// An index map of Piece IDs to their index within the vector store.
@@ -51,7 +52,7 @@ final class SlotMap: DataExpressible {
             self.flags = flags
         }
 
-        public init(bytes: [UInt8], fileLength: Int) throws {
+        public init(bytes: [UInt8]) throws {
             // Make sure we have at least the minimum amount of bytes needed for the header.
             guard bytes.count >= Self.byteCount else {
                 throw SlotMapError.truncatedFile(found: bytes.count, needed: Self.byteCount)
@@ -79,7 +80,8 @@ final class SlotMap: DataExpressible {
             }
 
             let claimedSlotCount: Int = bytes.load(at: Offset.slotCount)
-            let slotCapacity = max(0, fileLength - Self.byteCount) / MemoryLayout<UInt64>.size
+            let slotCapacity = max(0, bytes.count - Self.byteCount) / MemoryLayout<UInt64>.size
+            
             guard claimedSlotCount <= slotCapacity else {
                 throw SlotMapError.slotCountExceedsFileSize(declaredSlots: claimedSlotCount, maximumSlots: slotCapacity)
             }
@@ -136,13 +138,14 @@ final class SlotMap: DataExpressible {
         scanDeadCount()
     }
     
-    init(bytes: [UInt8], fileSize: Int) throws {
+    init(bytes: [UInt8]) throws {
         precondition(SlotMap.Header.byteCount % MemoryLayout<UInt64>.alignment == 0, "Entries must start aligned for bindMemory")
-        header = try SlotMap.Header(bytes: bytes, fileLength: fileSize)
+        header = try SlotMap.Header(bytes: bytes)
         let expectedSlotEnd = Offset.pieceIDs + (header.slotCount * MemoryLayout<UInt64>.size)
+        let slotCapacity = max(0, bytes.count - Offset.pieceIDs) / MemoryLayout<UInt64>.size
         
-        guard expectedSlotEnd > Offset.pieceIDs else {
-            entries = []
+        guard expectedSlotEnd > Offset.pieceIDs, expectedSlotEnd < slotCapacity else {
+            throw SlotMapError.slotCountExceedsFileSize(declaredSlots: expectedSlotEnd, maximumSlots: slotCapacity)
             return
         }
         
@@ -180,6 +183,10 @@ extension SlotMap {
         return entries[slot]
     }
     
+    func byteOffset(for slot: Int) -> UInt64 {
+        return UInt64(Header.byteCount + (slot * MemoryLayout<UInt64>.size))
+    }
+    
     /// Append contents of a [UInt64] array
     /// - Parameter contentsOf: The array of pieceIDs to append to the map file.
     /// - Returns: The index range where the contents were added.
@@ -197,7 +204,9 @@ extension SlotMap {
         var newlyDead = 0
         for slot in range where entries[slot] != SlotMap.tombstoneValue { newlyDead += 1 }
         deadCount += newlyDead
-        entries.replaceSubrange(range, with: Array(repeating: SlotMap.tombstoneValue, count: range.count))
+        let graves = [UInt64](repeating: SlotMap.tombstoneValue.littleEndian, count: range.count)
+
+        entries.replaceSubrange(range, with: graves)
     }
     
     func isLive(_ slot: Int) -> Bool {

@@ -15,7 +15,7 @@ final class SlotMapFile {
     public init(url: URL) throws {
         self.url = url
         let data = try Data.init(contentsOf: url)
-        map = try SlotMap(bytes: data.byteArray, fileSize: data.count)
+        map = try SlotMap(bytes: data.byteArray)
         file = try BinaryFile(url: url)
     }
     
@@ -26,5 +26,34 @@ final class SlotMapFile {
         let data = Data(emptyFile)
         try data.write(to: url, options: .withoutOverwriting)
         return try SlotMapFile(url: url)
+    }
+    
+    
+    @discardableResult
+    func append(contentsOf array: [UInt64]) throws -> Range<Int> {
+        // Append to the in-memory array.
+        let range = map.append(contentsOf: array)
+        
+        // Get the first bye offset for the start of the range.
+        let startOffset = map.byteOffset(for: range.lowerBound)
+        
+        // Write the new contents to the file.
+        try array.withUnsafeBytes { buffer in
+            try file.write(data: Data(buffer), at: startOffset)
+        }
+    }
+
+    func tombstone(range: Range<Int>) throws {
+        
+    }
+
+    func writeSlots() throws {
+        let size = map.encoded()
+    }
+    
+    /// Persist the header onto disk, this is a small 64 byte write to keep slot count up to date on disk without writing the entire file.
+    func writeHeader() throws {
+        let header = map.header.encoded()
+        try file.write(data: Data(header), at: 0)
     }
 }
