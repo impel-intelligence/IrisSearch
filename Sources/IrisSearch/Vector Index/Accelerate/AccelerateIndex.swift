@@ -97,11 +97,14 @@ extension AccelerateIndex {
             throw AccelerateIndexError.mismatchedDimensions(found: query.count, expected: dimensions)
         }
         
+        let slotMap = generation.slotMap
         let normalizedQuery = l2Normalize(vector: query)
         
         var distances: [Float] = [Float](repeating: 0, count: slots.count)
         
-        try generation.vectorStore.withVectorMatrix { matrixBase in
+        try generation.vectorStore.withVectorMatrix { startingMatrixBase in
+            let matrixBase = startingMatrixBase.advanced(by: slots.lowerBound * dimensions)
+            
             distances.withUnsafeMutableBufferPointer { distanceBuffer in
                 normalizedQuery.withUnsafeBufferPointer { queryBuffer in
                     let distanceBase = distanceBuffer.baseAddress!
@@ -116,8 +119,12 @@ extension AccelerateIndex {
 
         // Take the TopK distances and their slot as the result.
         for index in distances.indices {
+            let slot = slots.startIndex + index
+            // Skip any vectors that are marked as dead
+            guard slotMap.isLive(slot) else { continue }
+            
             let distance = distances[index]
-            resultStack.insert(id: slots.startIndex + index, distance: distance)
+            resultStack.insert(id: slot, distance: distance)
         }
 
         return resultStack.descending()

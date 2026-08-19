@@ -160,10 +160,9 @@ final class SlotMap: DataExpressible {
         let decodedHeader = try SlotMap.Header(bytes: bytes)
         
         let expectedSlotEnd = Offset.pieceIDs + (decodedHeader.slotCount * MemoryLayout<UInt64>.size)
-        let slotCapacity = max(0, bytes.count - Offset.pieceIDs) / MemoryLayout<UInt64>.size
         
-        guard expectedSlotEnd > Offset.pieceIDs, expectedSlotEnd < slotCapacity else {
-            throw SlotMapError.slotCountExceedsFileSize(declaredSlots: expectedSlotEnd, maximumSlots: slotCapacity)
+        guard expectedSlotEnd > Offset.pieceIDs else {
+            throw SlotMapError.slotCountExceedsFileSize(declaredSlots: expectedSlotEnd, maximumSlots: decodedHeader.slotCount)
         }
         
         // Remap the rest of the bytes into a little endian UInt64 array.

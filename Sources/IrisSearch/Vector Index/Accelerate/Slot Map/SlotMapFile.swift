@@ -48,7 +48,7 @@ final class SlotMapFile {
         let startOffset = map.byteOffset(for: range.lowerBound)
         
         // Write the new contents to the file.
-        try ids.withUnsafeBytes { buffer in
+        try ids.map { $0.littleEndian }.withUnsafeBytes { buffer in
             try file.write(data: Data(buffer), at: startOffset)
         }
         
