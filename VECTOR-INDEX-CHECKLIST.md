@@ -88,7 +88,10 @@ A checklist item you disagree with is a conversation, not a mistake. Several of 
 ### Search
 
 - [ ] **2.16** The scan covers the live count, not the capacity. **§10**
-- [ ] **2.17** Tombstones are skipped *during* selection, and the fetch is widened by the dead fraction. **§10**
+- [ ] **2.16a** The scan kernel is `vDSP_dotpr` per row, not `cblas_sgemv`. The crossover is the last-level cache: `mmul` wins below it (2.64x at 3 MiB), `dotpr` above it (1.31x at 175 MiB), and it lands at 48 MiB — exactly the M1 Max SLC. `dotpr` is flat at 39.5 GB/s at every size; `mmul` runs 110 GB/s resident and collapses to 30 GB/s streaming. Choose `dotpr` because `mmul`'s win sits where the scan is already 0.03 ms, while `dotpr`'s sits where it is 4.7 ms. Reverse it if corpora stay in the low thousands, or if `dimensions` ever drops to 256 or below, where short rows make `dotpr`'s per-call overhead dominate. It also uses 64-bit lengths (no 2.8M-row `Int32` ceiling), is not deprecated, and fuses scoring with selection so no per-tile scores array is allocated. **§10**
+- [ ] **2.16b** `isLive` is tested *before* the dot product, not after — skipping the multiply as well as the result. Measured with dead runs of 10 (one typical document): 1.03× at 5% dead, 1.07× at 10%, 1.18× at 25%, 1.50× at 50%. Never slower at any fraction the index will see. **§10**
+- [ ] **2.16c** That guard is not run-skipping: no run derivation, no minimum-gap heuristic, no threshold. The only shape where it loses is dead runs of length 1, which needs a corpus of single-piece documents with scattered deletions, and costs ~14% there. Judged not worth a threshold to guard against. **§10**
+- [ ] **2.17** Tombstones are skipped *during* selection, never after. No widening by the dead fraction — dead slots would only consume the top-k budget if they reached the heap, and the `isLive` guard runs before `insert`. **§10**
 - [ ] **2.18** Non-finite scores cannot enter the heap. **§10**
 - [ ] **2.19** The tie-break rule is documented and separately tested.
 - [ ] **2.20** The scan is tiled and parallel, using the modern BLAS interface.

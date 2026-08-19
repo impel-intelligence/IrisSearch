@@ -98,4 +98,8 @@ final class SlotMapFile {
         try synchronizeFile()
         durableUpToSlot = map.count
     }
+    
+    subscript(slot: Int) -> UInt64 { map[slot] }
+    
+    func isLive(_ slot: Int) -> Bool { map.isLive(slot) }
 }

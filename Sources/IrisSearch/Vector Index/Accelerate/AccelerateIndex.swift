@@ -7,6 +7,7 @@
 
 import Foundation
 import IrisCommon
+import Accelerate
 
 enum AccelerateIndexError: Error {
     case mismatchedDimensions(found: Int, expected: Int)
@@ -71,13 +72,55 @@ extension AccelerateIndex {
 // MARK: Search
 extension AccelerateIndex {
     func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
-        // TODO: Populate
-        return []
+        // Search over the entire index.
+        return try search(query: query, kItems: k, slots: 0..<generation.slotMap.count)
     }
     
     func search(query: [Float], kItems k: Int, collection: UUID) throws -> [(id: Int, distance: Float)] {
         // TODO: Populate
-        return []
+        let searchRange = try generation.documentLog.range(for: collection)
+        return try search(query: query, kItems: k, slots: searchRange)
+    }
+    
+    /// Search across a range of slots and return the top `k` items.
+    ///  
+    /// - Parameters:
+    ///   - query: <#query description#>
+    ///   - k: <#k description#>
+    ///   - slots: <#slots description#>
+    /// - Returns: <#description#>
+    private func search(query: [Float], kItems k: Int, slots: Range<Int>) throws -> [(id: Int, distance: Float)] {
+        guard k > 0, !slots.isEmpty else { return [] }
+        
+        let dimensions = generation.vectorStore.dimensions
+        guard query.count == dimensions else {
+            throw AccelerateIndexError.mismatchedDimensions(found: query.count, expected: dimensions)
+        }
+        
+        let normalizedQuery = l2Normalize(vector: query)
+        
+        var distances: [Float] = [Float](repeating: 0, count: slots.count)
+        
+        try generation.vectorStore.withVectorMatrix { matrixBase in
+            distances.withUnsafeMutableBufferPointer { distanceBuffer in
+                normalizedQuery.withUnsafeBufferPointer { queryBuffer in
+                    let distanceBase = distanceBuffer.baseAddress!
+                    let queryBase = queryBuffer.baseAddress!
+                    
+                    vDSP_mmul(matrixBase, 1, queryBase, 1, distanceBase, 1, vDSP_Length(slots.count), 1, vDSP_Length(dimensions))
+                }
+            }
+        }
+        
+        let resultStack = TopKStack(capacity: k)
+
+        // Take the TopK distances and their slot as the result.
+        for index in distances.indices {
+            let distance = distances[index]
+            resultStack.insert(id: slots.startIndex + index, distance: distance)
+        }
+
+        return resultStack.descending()
     }
 }
 
@@ -90,7 +133,8 @@ extension AccelerateIndex {
         let squareSum: Float = vector.reduce(0.0) { partialResult, float in
             partialResult + (float * float)
         }
-                
+        
+        // TODO: Use accelerate for sqrt
         let norm = sqrt(squareSum)
         
         // The vector is already normalized so just return it

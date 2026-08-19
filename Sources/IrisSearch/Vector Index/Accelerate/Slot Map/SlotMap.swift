@@ -202,6 +202,10 @@ extension SlotMap {
         return entries[slot]
     }
     
+    func isLive(_ slot: Int) -> Bool {
+        return entries[slot] != SlotMap.tombstoneValue
+    }
+
     /// Get the byte offset for a slot in the byte representation of SlotMap.
     /// - Parameter slot: The slot to get the offset for
     /// - Returns: The number of bytes that need to be offset to start at `slot`.
@@ -237,9 +241,5 @@ extension SlotMap {
         let tombstones = [UInt64](repeating: SlotMap.tombstoneValue.littleEndian, count: range.count)
 
         entries.replaceSubrange(range, with: tombstones)
-    }
-    
-    func isLive(_ slot: Int) -> Bool {
-        return entries[slot] != SlotMap.tombstoneValue
     }
 }

@@ -156,3 +156,4 @@ extension DatabaseGeneration {
         return try DatabaseGeneration(generation: generation, url: generationURL)
     }
 }
+

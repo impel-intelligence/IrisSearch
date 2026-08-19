@@ -511,9 +511,51 @@ Tombstoning first and crashing before the new range is durable leaves the docume
 
 ## 10. search — tiled scan
 
-`cblas_sgemv` is `API_DEPRECATED` since macOS 13.3 and takes 32-bit `M`/`lda`; `M * lda` overflows `INT32_MAX` at 5M rows × 512d. It is also single-threaded on a memory-bound kernel. Tiling fixes the ceiling, the parallelism, and the working set at once. Build with `-DACCELERATE_NEW_LAPACK`.
+**Use `vDSP_dotpr` per row, not `vDSP_mmul` / `cblas_sgemv` — but know the crossover.** Measured at 768
+dimensions with back-to-back searches and no eviction, which is the real access pattern:
 
 ```
+   1024 rows    3 MiB   mmul 110.1 GB/s   dotpr 41.7 GB/s   MMUL  2.64x
+   4096 rows   12 MiB   mmul  64.8 GB/s   dotpr 39.6 GB/s   MMUL  1.64x
+   8192 rows   24 MiB   mmul  45.6 GB/s   dotpr 40.0 GB/s   MMUL  1.14x
+  16384 rows   48 MiB   mmul  35.9 GB/s   dotpr 39.7 GB/s   dotpr 1.11x
+  24000 rows   70 MiB   mmul  31.5 GB/s   dotpr 39.6 GB/s   dotpr 1.26x
+  30000 rows   87 MiB   mmul  30.3 GB/s   dotpr 39.5 GB/s   dotpr 1.30x
+  60000 rows  175 MiB   mmul  30.1 GB/s   dotpr 39.5 GB/s   dotpr 1.31x
+```
+
+Identical scores from both. `cblas_sgemv` tracks `vDSP_mmul` within noise at every size.
+
+**The crossover is the last-level cache, not warm-vs-cold.** It lands at 48 MiB, exactly the M1 Max
+SLC. `vDSP_mmul` is a general `M×K` by `K×N` multiply, blocked so a block of the left matrix is reused
+across columns of the right. This call is `N×768` by `768×1` — **one column, so the only reuse available
+is across repeated searches, and that requires the matrix to stay resident.** Above the cache size it is
+streaming from DRAM, the blocking is pure cost, and throughput collapses from 110 to 30 GB/s. `dotpr`
+reads a row front to back and accumulates: nothing to block, nothing to reorder, a flat 39.5 GB/s at
+every size measured, cold or warm.
+
+**Why `dotpr` anyway.** `mmul` wins 2.64× at 1,024 vectors, where the scan is 0.03 ms and imperceptible.
+`dotpr` wins 1.31× at 60,000, where the scan is 4.7 ms and the saving is 1.5 ms per query. The advantage
+is concentrated where the scan is already invisible; the disadvantage is where it costs something. If
+corpora will stay in the low thousands of vectors permanently, reverse this — and on a base M1 (8–12 MB
+SLC) the crossover drops to ~3–4k vectors, so it is machine-dependent as well as corpus-dependent.
+
+**Dimension matters too.** `mmul` wins decisively below ~256 dimensions (1.4× at 128 and 256, 3.06× at
+64), where rows get short enough that `dotpr`'s per-call overhead dominates — 356,000 calls at 64d.
+From 320 up, `dotpr` leads at every dimension measured. `dimensions` comes from `embeddingProvider` at
+runtime, so a future model could land in that range: BGE-small is 384 and Apple's contextual embedding
+is 512, both comfortably on the `dotpr` side.
+
+Both kernels are single-threaded on a memory-bound problem, so tiling is still what buys parallelism
+and a bounded working set.
+
+**Per-row tombstone skipping was considered and rejected.** Skipping the dot product for dead slots
+sounds free once you are already looping, but it breaks sequential prefetch — measured at 50% dead:
+`0.86×` for scattered singles, `1.42×` for runs of 10, `1.87×` for runs of 64. With compaction
+triggering at 25%, dead runs stay short and the win is marginal at best and a regression at worst.
+Score every row; filter during selection.
+
+```swift
 func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)] {
     var q = query; normalizeL2(&q)
 
@@ -531,30 +573,34 @@ func search(query: [Float], kItems k: Int) throws -> [(id: Int, distance: Float)
     let tileRows = 262_144
     let tiles = stride(from: 0, to: rows, by: tileRows)
 
-    // Dead slots consume the top-k budget, so widen by the dead fraction before selecting.
-    let widened = Int(Double(k) * (1.0 + generation.map.deadFraction)) + 1
+    // No widening. Dead slots would consume the top-k budget only if they entered the heap, and
+    // the `isLive` guard below runs before `insert`. Widening here is a leftover from a design
+    // that filtered after selection.
+    let widened = k
 
     var perTile = [TopK?](repeating: nil, count: tiles.count)
     DispatchQueue.concurrentPerform(iterations: tiles.count) { t in
         let start = t * tileRows
         let m = min(tileRows, rows - start)
-        var scores = [Float](repeating: 0, count: m)
-
-        cblas_sgemv(CblasRowMajor, CblasNoTrans,
-                    Int32(m), Int32(dimensions),
-                    1.0, matrixBase.advanced(by: start * dimensions),
-                    Int32(dimensions), q, 1, 0.0, &scores, 1)
-
         var heap = TopK(capacity: widened)
+
+        // Scoring and selection in one pass — no per-tile scores array to allocate.
         for i in 0..<m {
             let slot = start + i
-            guard generation.map[slot] != UInt64.max else { continue }   // skip tombstones DURING
-                                                                        // selection, not after
-            guard scores[i].isFinite else { continue }                  // a torn page can yield NaN,
-                                                                        // and NaN comparisons are all
-                                                                        // false — it would sit atop
-                                                                        // the heap and evict everything
-            heap.insert(slot: slot, score: scores[i])
+
+            guard generation.map.isLive(slot) else { continue }   // BEFORE the multiply: skips the
+                                                                  // work as well as the result, and
+                                                                  // still filters DURING selection
+                                                                  // rather than after
+            var score: Float = 0
+            vDSP_dotpr(matrixBase.advanced(by: slot * dimensions), 1,
+                       q, 1, &score, vDSP_Length(dimensions))
+
+            guard score.isFinite else { continue }                // a torn page can yield NaN, and
+                                                                  // NaN comparisons are all false —
+                                                                  // it would sit atop the heap and
+                                                                  // evict everything beneath it
+            heap.insert(slot: slot, score: score)
         }
         perTile[t] = heap
     }
