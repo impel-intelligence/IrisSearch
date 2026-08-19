@@ -24,7 +24,7 @@ class BinaryFile {
         try handle.write(contentsOf: data)
     }
     
-    func grow(to offset: UInt64) throws {
+    func scale(to offset: UInt64) throws {
         try handle.truncate(atOffset: offset)
     }
     

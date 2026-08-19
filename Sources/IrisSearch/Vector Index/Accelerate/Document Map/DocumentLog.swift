@@ -9,7 +9,7 @@ import Foundation
 import CryptoSwift
 import System
 
-enum DocumentMapError: Error {
+enum DocumentMapError: Error, Equatable {
     case notADocumentMap
     case truncatedFile(found: Int, needed: Int)
     case unsupportedVersion(found: UInt32, supported: UInt32)
@@ -19,7 +19,7 @@ enum DocumentMapError: Error {
     case rangeDoesNotExist(uuid: UUID)
 }
 
-final class DocumentLog: DataExpressible {
+final class DocumentLog {
     struct DocumentRange {
         let id: UInt64
         let startSlot: Int
@@ -196,7 +196,7 @@ final class DocumentLog: DataExpressible {
     public var deadFraction: Double { count == 0 ? 0 : Double(deadCount) / Double(count) }
     
     var byteCount: Int {
-        DocumentLog.Header.byteCount + (count * MemoryLayout<UInt64>.size)
+        DocumentLog.Header.byteCount + (count * Record.byteCount)
     }
     
     init(generation: UInt64) {
@@ -209,9 +209,9 @@ final class DocumentLog: DataExpressible {
         ranges = [:]
         
         let recordBytes = bytes.count - Offset.records
-        let expectedRecordEnd = (recordBytes / Record.byteCount) * Record.byteCount
+        let expectedRecordEnd = Offset.records + ((recordBytes / Record.byteCount) * Record.byteCount)
         
-        guard expectedRecordEnd > Offset.records else {
+        guard expectedRecordEnd >= Offset.records else {
             return
         }
         
@@ -230,29 +230,27 @@ final class DocumentLog: DataExpressible {
             ranges[record.uuid] = record.isLive ? DocumentRange(record) : nil
             
             if Int(record.sequence) > nextSequence {
-                nextSequence = record.sequence
+                nextSequence = record.sequence + 1
             }
         }
-        
-        nextSequence += 1
     }
     
     /// Appends the serialized record. There is no offset parameter: the destination's current end *is* the offset, so callers cannot pass an inconsistent one.
-    func encode(into bytes: inout [UInt8]) {
+    func compactedEncoding(into bytes: inout [UInt8]) {
         header.encode(into: &bytes)
         
-        // Do NOT use keypath here, it slows the code down by 45x
+        var localSequence = 0
         for (uuid, range) in ranges {
-            let record = Record(uuid: uuid, documentID: range.id, startSlot: UInt64(range.startSlot), endSlot: UInt64(range.endSlot), sequence: UInt64(nextSequence), flags: [.live])
+            let record = Record(uuid: uuid, documentID: range.id, startSlot: UInt64(range.startSlot), endSlot: UInt64(range.endSlot), sequence: UInt64(localSequence), flags: [.live])
             record.encode(into: &bytes)
-            nextSequence += 1
+            localSequence += 1
         }
     }
 
-    func encoded() -> [UInt8] {
+    func compactEncoded() -> [UInt8] {
         var bytes = [UInt8]()
         bytes.reserveCapacity(byteCount)
-        encode(into: &bytes)
+        compactedEncoding(into: &bytes)
         return bytes
     }
 }

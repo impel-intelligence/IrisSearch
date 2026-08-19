@@ -143,5 +143,6 @@ public func measurePerformance(nRuns: Int = 100, _ block: @escaping () async thr
 public extension Testing.Tag {
     @Tag static var lfs: Self
     @Tag static var network: Self
+    @Tag static var arxiv: Self
 }
 

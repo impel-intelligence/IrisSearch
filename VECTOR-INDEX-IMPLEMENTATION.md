@@ -402,15 +402,26 @@ func addDocument(document: IrisDocument) throws {   // synchronous. no await, an
     // LIVE. Skip the record and reconcile (§6) sees it in SQLite but not in the log, queues it for
     // re-index, gets zero vectors again, and repeats on every subsequent open — forever.
 
-    // 2. Grow. map.bin FIRST — it is tiny, and a crash between the two ftruncates must never
-    //    leave the map smaller than the vectors file. Capacity is derived from file length.
+    // 2. Grow to EXACTLY what is needed — no doubling. Capacity is derived from file length.
+    //    map.bin FIRST: it is tiny, and a crash between the two ftruncates must never leave the
+    //    map smaller than the vectors file.
+    //
+    //    Doubling is the array-resize reflex and it does not apply here, because ftruncate copies
+    //    nothing. Measured, truncate + remap is 0.027 ms and FLAT from 1 MiB to 8 GiB — mmap is
+    //    lazy and truncate is a metadata update, so there is nothing to amortise. Growth also
+    //    allocates zero physical blocks (8272 MiB logical read 0 MiB physical on APFS), so
+    //    over-allocating reserves nothing; it only inflates the logical size that backup tooling
+    //    and iOS storage accounting report. A 2.9 GB index showing as 5.8 GB in Settings, to save
+    //    0.027 ms per document, is the wrong trade.
     let start = generation.map.count            // NOT a stored counter. See §5.
     try faultInjector?(.afterReserve)
     if start + n > generation.derivedCapacity {
-        let newCapacity = max(start + n, generation.derivedCapacity * 2)
-        try generation.map.grow(to: newCapacity)          // truncate(atOffset:) + re-read the mapping
-        try generation.vectors.grow(to: newCapacity)
+        try generation.map.grow(to: start + n)            // truncate(atOffset:) + re-read the mapping
+        try generation.vectors.grow(to: start + n)
     }
+
+    // `grow` must refuse to shrink. `truncate(atOffset:)` shortens a file as happily as it extends
+    // one, and here shortening discards committed vectors.
 
     // 3. Write payload through BinaryFile; the mapping stays read-only. ONE call writes both files,
     //    so there is no second position parameter for them to disagree about — the slot map

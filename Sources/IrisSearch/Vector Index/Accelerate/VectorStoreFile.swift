@@ -132,8 +132,8 @@ final class VectorStoreFile: BinaryFile {
         try remap()
     }
     
-    internal override func grow(to offset: UInt64) throws {
-        try super.grow(to: offset)
+    internal override func scale(to offset: UInt64) throws {
+        try super.scale(to: offset)
         try remap()
     }
 
@@ -170,7 +170,7 @@ extension VectorStoreFile {
         
     public func reserve(upTo slot: Int) throws {
         let newOffset = byteOffset(for: slot)
-        try self.grow(to: newOffset)
+        try self.scale(to: newOffset)
     }
 
     /// Write the vectors into the VectorStoreFile at the given slot

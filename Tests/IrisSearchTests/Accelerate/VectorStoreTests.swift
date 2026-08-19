@@ -30,7 +30,7 @@ struct VectorStoreTests {
         
         let file = try VectorStoreFile.new(at: tmp, dimensions: 3)
         
-        try file.reserve(slot: 1)
+        try file.reserve(upTo: 1)
         
         let vectors: [[Float]] = [[1.0, 2.0, 3.0]]
         
@@ -47,7 +47,7 @@ struct VectorStoreTests {
         
         let file = try VectorStoreFile.new(at: tmp, dimensions: 3)
         
-        try file.reserve(slot: 2)
+        try file.reserve(upTo: 2)
         
         let vectors: [[Float]] = [[1.0, 2.0, 3.0], [3.0, 5.0, 1.0]]
         
@@ -65,7 +65,7 @@ struct VectorStoreTests {
         
         let file = try VectorStoreFile.new(at: tmp, dimensions: 3)
         
-        try file.reserve(slot: 5)
+        try file.reserve(upTo: 5)
         
         let vectors: [[Float]] = [[1.0, 2.0, 3.0], [3.0, 5.0, 1.0]]
         
@@ -81,7 +81,7 @@ struct VectorStoreTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         
         let file = try VectorStoreFile.new(at: tmp, dimensions: 3)
-        try file.reserve(slot: 2)
+        try file.reserve(upTo: 2)
         
         let vectors: [[Float]] = [[1.0, 2.0, 3.0], [3.0, 5.0, 1.0]]
 

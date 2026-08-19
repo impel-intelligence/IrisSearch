@@ -73,6 +73,8 @@ A checklist item you disagree with is a conversation, not a mistake. Several of 
 - [ ] **2.11** Stored dimensionality is checked against the live embedder.
 - [ ] **2.11a** `writePayload` is one call taking vectors *and* ids, with no position parameter: the slot map allocates and the vector file follows its returned range. Two calls with two `start` arguments can drift, and then slot N holds one document's vector while `map.bin` says it belongs to another — both files internally consistent, nothing to validate against. **§7**
 - [ ] **2.11b** `DocumentLog.append` mints the sequence from `nextSequence`; callers never pass one. A duplicate sequence makes last-write-wins a coin flip that only shows up after a reload. **§7, §8**
+- [ ] **2.11c** Growth is exact, never doubled. `truncate` + remap costs 0.027 ms flat from 1 MiB to 8 GiB — mmap is lazy, so there is nothing to amortise — and grows zero physical blocks, so over-allocating reserves nothing and only inflates the logical size that backups and iOS storage accounting report. **§7**
+- [ ] **2.11d** `grow(to:)` refuses to shrink. It wraps `truncate(atOffset:)`, which shortens a file as readily as it extends one, and shortening discards committed vectors. **§7**
 - [ ] **2.12** Capacity is derived from file length, never stored. Differing file lengths resolve to the minimum and are re-grown before any write. **§4, §6**
 - [ ] **2.12a** `slotCount` is clamped to the derived capacity on read. A torn header can read large, and an unclamped scan runs off the end of the mapping. **§6**
 - [ ] **2.12b** There is no `pendingSlotCount`. The in-memory count *is* `slotMap.count`; only `durableSlotCount` is stored, because only it describes something on disk that memory cannot derive. **§5, §7**

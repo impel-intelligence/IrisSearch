@@ -22,7 +22,7 @@ final class DocumentLogFile {
     public static func new(at url: URL, maximumSlotCount: Int, generation: UInt64 = 0) throws -> DocumentLogFile {
         let parentDirectory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parentDirectory, withIntermediateDirectories: true)
-        let emptyFile = DocumentLog(generation: generation).encoded()
+        let emptyFile = DocumentLog(generation: generation).compactEncoded()
         let data = Data(emptyFile)
         try data.write(to: url, options: .withoutOverwriting)
         return try DocumentLogFile(url: url, maximumSlotCount: maximumSlotCount)

@@ -161,7 +161,7 @@ final class SlotMap: DataExpressible {
         
         let expectedSlotEnd = Offset.pieceIDs + (decodedHeader.slotCount * MemoryLayout<UInt64>.size)
         
-        guard expectedSlotEnd > Offset.pieceIDs else {
+        guard expectedSlotEnd <= bytes.count else {
             throw SlotMapError.slotCountExceedsFileSize(declaredSlots: expectedSlotEnd, maximumSlots: decodedHeader.slotCount)
         }
         

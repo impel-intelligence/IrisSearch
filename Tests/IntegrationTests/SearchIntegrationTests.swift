@@ -13,7 +13,7 @@ import IrisCommon
 import TestUtilities
 import AppleIntelligenceEmbedder
 
-@Suite("Search integration testing", .tags(.lfs))
+@Suite("Search integration testing", .tags(.lfs, .arxiv))
 struct SearchIntegrationTests {
     @Test("Test performance of search against a collection of ARXIV documents")
     func arxivProcessAndSearch() async throws {
