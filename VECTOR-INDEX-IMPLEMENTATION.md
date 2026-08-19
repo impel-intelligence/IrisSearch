@@ -642,8 +642,8 @@ This is what replaces the 2,001 per-document `.index` files.
 
 Compaction rewrites gigabytes and cannot hold the actor. Anything appended while it runs would be silently discarded by the `current` rename — no error, no tombstone, and SQLite still believes those documents are indexed.
 
-```
-func compact() throws {
+```swift
+func compact() tshrows {
     guard !compactionInProgress else { return }      // two writers must not build into one path
     compactionInProgress = true; defer { compactionInProgress = false }
     try flush()

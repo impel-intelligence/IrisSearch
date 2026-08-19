@@ -20,6 +20,8 @@ final class AccelerateIndex: VectorIndex {
     
     private var generation: DatabaseGeneration
     
+    private var compactionInProgress: Bool = false
+    
     init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
         self.indexLocation = indexLocation
         self.embeddingProvider = embeddingProvider
@@ -30,6 +32,10 @@ final class AccelerateIndex: VectorIndex {
             generation = try DatabaseGeneration.load(generation: currentGeneration, in: indexLocation)
         } else {
             generation = try DatabaseGeneration.new(at: indexLocation, generation: 0, dimensions: UInt64(embeddingProvider.dimension))
+        }
+        
+        guard generation.vectorStore.dimensions == embeddingProvider.dimension else {
+            throw AccelerateIndexError.mismatchedDimensions(found: generation.vectorStore.dimensions, expected: embeddingProvider.dimension)
         }
     }
 }
@@ -124,10 +130,10 @@ extension AccelerateIndex {
             guard slotMap.isLive(slot) else { continue }
             
             let distance = distances[index]
-            resultStack.insert(id: slot, distance: distance)
+            resultStack.insert(slot: slot, distance: distance)
         }
-
-        return resultStack.descending()
+        
+        return resultStack.descending().map { (id: Int(slotMap[$0.slot]), distance: $0.distance) }
     }
 }
 
@@ -156,5 +162,20 @@ extension AccelerateIndex {
         }
 
         return vector
+    }
+}
+
+// MARK: Compaction
+extension AccelerateIndex {
+    func compact() throws {
+        // We never want to run compaction more than once at the same time
+        guard !compactionInProgress else { return }
+        compactionInProgress = true
+        defer { compactionInProgress = false }
+        
+        // Make sure the current generation is synced to disk
+        try generation.synchronize()
+        
+        
     }
 }

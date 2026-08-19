@@ -27,6 +27,12 @@ final class DocumentLog {
         
         var range: Range<Int> { startSlot..<endSlot }
         
+        init(id: UInt64, startSlot: Int, endSlot: Int) {
+            self.id = id
+            self.startSlot = startSlot
+            self.endSlot = endSlot
+        }
+        
         init(_ record: Record) {
             id = record.documentID
             startSlot = Int(record.startSlot)

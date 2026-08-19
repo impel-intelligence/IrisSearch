@@ -55,8 +55,8 @@ extension DatabaseGeneration {
         // Tell the document log that the region of slots has become live.
         try documentLog.append(uuid: documentUUID, documentID: documentID, slots: slots, live: true)
         
-        // Update the number of changes
-        changesSinceLastSync += 1
+        // Update the number of slots that changed
+        changesSinceLastSync += slots.count
         
         // Check to see if we need to synchronize
         if changesSinceLastSync >= Self.syncThreshold {
@@ -74,8 +74,8 @@ extension DatabaseGeneration {
         // Append a log to the document log that marks the document as no longer live.
         _ = try documentLog.append(uuid:documentUUID, documentID: UInt64(documentID), slots: range, live: false)
         
-        // Update the number of changes
-        changesSinceLastSync += 1
+        // Update the number of slots that changed
+        changesSinceLastSync += range.count
         
         // Check to see if we need to synchronize
         if changesSinceLastSync >= Self.syncThreshold {
@@ -94,7 +94,6 @@ extension DatabaseGeneration {
         try slotMap.commit()
     }
 }
-
 
 // MARK: Creation & Loading
 extension DatabaseGeneration {
@@ -156,4 +155,3 @@ extension DatabaseGeneration {
         return try DatabaseGeneration(generation: generation, url: generationURL)
     }
 }
-

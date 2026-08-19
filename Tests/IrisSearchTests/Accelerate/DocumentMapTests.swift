@@ -449,7 +449,7 @@ struct DocumentMapTests {
             .encode(into: &bytes)
 
         let map = try DocumentLog(bytes: bytes, maximumSlotCount: 1_000)
-        let encoded = map.encoded()
+        let encoded = map.compactEncoded()
 
         #expect(encoded.count == Header.byteCount + Record.byteCount,
                 "Encoding compacts: three log records, one live document, one record out.")
@@ -465,7 +465,7 @@ struct DocumentMapTests {
 
         let map = try DocumentLog(bytes: bytes, maximumSlotCount: 1_000)
 
-        #expect(map.encoded() == map.encoded())
+        #expect(map.compactEncoded() == map.compactEncoded())
     }
 
     @Test func testEncodedMapReloadsWithTheSameRanges() async throws {
@@ -476,7 +476,7 @@ struct DocumentMapTests {
             .encode(into: &bytes)
 
         let map = try DocumentLog(bytes: bytes, maximumSlotCount: 1_000)
-        let rewritten = map.encoded()
+        let rewritten = map.compactEncoded()
         let reloaded = try DocumentLog(bytes: rewritten, maximumSlotCount: 1_000)
 
         #expect(reloaded.count == 2)
@@ -492,7 +492,7 @@ struct DocumentMapTests {
             .encode(into: &bytes)
 
         let map = try DocumentLog(bytes: bytes, maximumSlotCount: 1_000)
-        let rewritten = map.encoded()
+        let rewritten = map.compactEncoded()
         let reloaded = try DocumentLog(bytes: rewritten, maximumSlotCount: 1_000)
 
         #expect(reloaded.header.generation == 17)
@@ -509,7 +509,7 @@ struct DocumentMapTests {
             .encode(into: &bytes)
 
         let map = try DocumentLog(bytes: bytes, maximumSlotCount: 1_000)
-        let encoded = map.encoded()
+        let encoded = map.compactEncoded()
         let recordCount = (encoded.count - Header.byteCount) / Record.byteCount
 
         #expect(recordCount == 1)
