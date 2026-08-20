@@ -54,7 +54,6 @@ final class SlotMapFile {
         
         return range
     }
-
     
     /// "Deletes" a range of slots from the mapping.
     ///
@@ -88,6 +87,11 @@ final class SlotMapFile {
         try file.synchronize()
     }
     
+    /// Fully synchronizes the file to disk, ensuring it is actually written. This is only different from `synchronizeFile` on Darwin.
+    func fullSynchronizeFile() throws {
+        try file.fullSynchronize()
+    }
+    
     /// Writes the slot map header to disk then updates the durable slot tracker.
     ///
     /// This is considered a "commit" as the entire initialization of a ``DatabaseGeneration`` is based on the count found by ``SlotMapFile``. If this commit never reaches disk, the next load will result in any new appends being ignored.
@@ -98,6 +102,20 @@ final class SlotMapFile {
         try synchronizeFile()
         durableUpToSlot = map.count
     }
+    
+    func setCleanShutdown(_ value: Bool) {
+        map.setCleanShutdown(value)
+    }
+    
+    subscript(range: PartialRangeThrough<Int>) -> ArraySlice<UInt64> { map[range] }
+
+    subscript(range: PartialRangeFrom<Int>) -> ArraySlice<UInt64> { map[range] }
+
+    subscript(range: PartialRangeUpTo<Int>) -> ArraySlice<UInt64> { map[range] }
+
+    subscript(range: ClosedRange<Int>) -> ArraySlice<UInt64> { map[range] }
+
+    subscript(range: Range<Int>) -> ArraySlice<UInt64> { map[range] }
     
     subscript(slot: Int) -> UInt64 { map[slot] }
     

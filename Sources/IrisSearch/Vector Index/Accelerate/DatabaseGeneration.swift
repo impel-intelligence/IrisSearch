@@ -42,7 +42,8 @@ final class DatabaseGeneration {
 }
 
 extension DatabaseGeneration {
-    public func submit(embeddings: [[Float]], ids: [UInt64], documentUUID: UUID, documentID: UInt64) throws {
+    @discardableResult
+    public func submit(embeddings: [[Float]], ids: [UInt64], documentUUID: UUID, documentID: UInt64) throws -> Range<Int> {
         // Get slots that the embeddings can go into by adding their ids to the slot map.
         let slots = try slotMap.append(contentsOf: ids)
         
@@ -62,9 +63,11 @@ extension DatabaseGeneration {
         if changesSinceLastSync >= Self.syncThreshold {
             try synchronize()
         }
+        
+        return slots
     }
     
-    func delete(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {
+    func delete(documentUUID: UUID, documentID: Int64) throws {
         // Find the slot ranges for the document. This will throw if the document has no range.
         let range = try documentLog.range(for: documentUUID)
         
@@ -82,7 +85,7 @@ extension DatabaseGeneration {
             try synchronize()
         }
     }
-    
+        
     func synchronize() throws {
         // First step of synchronization is to synchronize all of the content to disk. If any one of these fail, the slot map commit will not go through.
         // If the slot map is not committed, any appends to the database will be intentionally lost on next load, then deleted during compaction.
@@ -93,25 +96,21 @@ extension DatabaseGeneration {
         // Mark the changes synced as complete by writing the header and updating the durable tracker.
         try slotMap.commit()
     }
+    
+    func fullSynchronize() throws {
+        // First step of synchronization is to synchronize all of the content to disk. If any one of these fail, the slot map commit will not go through.
+        // If the slot map is not committed, any appends to the database will be intentionally lost on next load, then deleted during compaction.
+        try vectorStore.fullSynchronize()
+        try slotMap.fullSynchronizeFile()
+        try documentLog.fullSynchronizeFile()
+
+        // Mark the changes synced as complete by writing the header and updating the durable tracker.
+        try slotMap.commit()
+    }
 }
 
 // MARK: Creation & Loading
 extension DatabaseGeneration {
-    /// Find the current generation in a parent directory
-    /// - Parameter parentDirectory: The directory to search for generations in.
-    static func detect(in parentDirectory: URL) throws -> UInt64? {
-        let genFolders = try FileManager.default.contentsOfDirectory(at: parentDirectory, includingPropertiesForKeys: [.isDirectoryKey]).filter { url in
-            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false && url.lastPathComponent.contains("gen-")
-        }
-        
-        guard !genFolders.isEmpty else { return nil }
-        
-        // Grab all of the generation integers
-        let generations = genFolders.compactMap({ UInt64($0.lastPathComponent.trimmingPrefix("gen-")) })
-                
-        return generations.max()
-    }
-
     /// Load a database generation at the given parent directory
     /// - Parameters:
     ///   - generation: The database generation to load.
@@ -144,14 +143,39 @@ extension DatabaseGeneration {
         try FileManager.default.createDirectory(at: generationURL, withIntermediateDirectories: true)
         
         let vectorStoreURL = generationURL.appending(path: "vec.bin")
-        _ = try VectorStoreFile.new(at: vectorStoreURL, dimensions: dimensions)
+        let vectorFile = try VectorStoreFile.new(at: vectorStoreURL, dimensions: dimensions)
         
         let slotMapURL = generationURL.appending(path: "slot.bin")
-        _ = try SlotMapFile.new(at: slotMapURL)
+        let slotFile = try SlotMapFile.new(at: slotMapURL)
         
         let docMapURL = generationURL.appending(path: "doc.bin")
-        _ = try DocumentLogFile.new(at: docMapURL, maximumSlotCount: 0)
+        let documentFile = try DocumentLogFile.new(at: docMapURL, maximumSlotCount: 0)
 
+        try vectorFile.synchronize()
+        try slotFile.synchronizeFile()
+        try documentFile.synchronizeFile()
+        
+        try FileDurability.syncDirectory(generationURL)
+        try FileDurability.syncDirectory(parentDirectory)
+        
         return try DatabaseGeneration(generation: generation, url: generationURL)
+    }
+    
+    static func delete(generation: UInt64, in parentDirectory: URL) throws {
+        let generationURL: URL = parentDirectory.appendingPathComponent("gen-\(generation)", conformingTo: .directory)
+        try FileManager.default.removeItem(at: generationURL)
+    }
+
+    static func getCurrentDatabase(in parentDirectory: URL) -> UInt64? {
+        let currentDatabasePointerLocation = parentDirectory.appending(path: "current")
+        guard FileManager.default.fileExists(atPath: currentDatabasePointerLocation.path(percentEncoded: false)) else { return nil }
+        guard let string = try? String(contentsOf: currentDatabasePointerLocation, encoding: .utf8) else { return nil }
+        return UInt64(string)
+    }
+    
+    static func writeCurrentDatabasePointer(for generation: UInt64, in parentDirectory: URL) throws {
+        let currentDatabasePointerLocation = parentDirectory.appending(path: "current")
+        let pointerContent = "\(generation)"
+        try pointerContent.write(to: currentDatabasePointerLocation, atomically: true, encoding: .utf8)
     }
 }

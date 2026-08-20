@@ -11,6 +11,8 @@ final class DocumentLogFile {
     private let file: BinaryFile
     private let map: DocumentLog
     private let url: URL
+    
+    var ranges: [UUID: DocumentLog.DocumentRange] { map.ranges }
 
     public init(url: URL, maximumSlotCount: Int) throws {
         self.url = url
@@ -55,5 +57,10 @@ extension DocumentLogFile {
     /// Synchronizes the file to disk, ensuring it is saved
     func synchronizeFile() throws {
         try file.synchronize()
+    }
+    
+    /// Fully synchronizes the file to disk, ensuring it is actually written. This is only different from `synchronizeFile` on Darwin.
+    func fullSynchronizeFile() throws {
+        try file.fullSynchronize()
     }
 }

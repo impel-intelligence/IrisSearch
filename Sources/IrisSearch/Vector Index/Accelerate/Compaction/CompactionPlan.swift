@@ -7,6 +7,11 @@
 
 import Foundation
 
+enum CompactionError: Error, Equatable {
+    case tombstonedSlotInLiveRange(uuid: UUID, slot: Int)
+    case rangeExceedsSnapshot(uuid: UUID, range: Range<Int>, snapshotCount: Int)
+}
+
 struct CompactionPlan: Sendable {
     struct Move: Sendable {
         let uuid: UUID
@@ -18,8 +23,12 @@ struct CompactionPlan: Sendable {
     var moves: [Move] = []
     var slotCount: Int
     
+    /// Create a plan to compact the given live document ranges.
+    ///
+    /// This explicitly does not do any filtering of non-live entires. Document ranges comes from ``DocumentLog/ranges`` which only contains live entires. This is not validated by the type system, but is validated by ``DatabaseGenerationTests/testDeleteTombstonesTheWholeRange``.
+    ///
+    /// - Parameter documentRanges: The live document ranges to create a compaction plan for.
     init(documentRanges: [UUID: DocumentLog.DocumentRange]) {
-        // This explicitly does not do any filtering of non-live entires. Document ranges comes from ``DocumentLog/ranges`` which only contains live entires.
         let orderedLogs = documentRanges
             .map { (uuid: $0.key, range: $0.value) }
             .sorted { $0.range.startSlot < $1.range.startSlot }

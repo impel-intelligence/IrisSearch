@@ -197,12 +197,40 @@ final class SlotMap: DataExpressible {
 }
 
 extension SlotMap {
+    subscript(range: PartialRangeThrough<Int>) -> ArraySlice<UInt64> {
+        return entries[range]
+    }
+
+    subscript(range: PartialRangeFrom<Int>) -> ArraySlice<UInt64> {
+        return entries[range]
+    }
+
+    subscript(range: PartialRangeUpTo<Int>) -> ArraySlice<UInt64> {
+        return entries[range]
+    }
+
+    subscript(range: ClosedRange<Int>) -> ArraySlice<UInt64> {
+        return entries[range]
+    }
+
+    subscript(range: Range<Int>) -> ArraySlice<UInt64> {
+        return entries[range]
+    }
+    
     subscript(slot: Int) -> UInt64 {
         return entries[slot]
     }
     
     func isLive(_ slot: Int) -> Bool {
         return entries[slot] != SlotMap.tombstoneValue
+    }
+    
+    func setCleanShutdown(_ value: Bool) {
+        if value {
+            self.flags.insert(.cleanShutdown)
+        } else {
+            self.flags.remove(.cleanShutdown)
+        }
     }
 
     /// Get the byte offset for a slot in the byte representation of SlotMap.
