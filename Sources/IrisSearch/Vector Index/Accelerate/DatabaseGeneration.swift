@@ -85,31 +85,9 @@ extension DatabaseGeneration {
             try synchronize()
         }
     }
-        
-    func synchronize() throws {
-        // First step of synchronization is to synchronize all of the content to disk. If any one of these fail, the slot map commit will not go through.
-        // If the slot map is not committed, any appends to the database will be intentionally lost on next load, then deleted during compaction.
-        try vectorStore.synchronize()
-        try slotMap.synchronizeFile()
-        try documentLog.synchronizeFile()
-
-        // Mark the changes synced as complete by writing the header and updating the durable tracker.
-        try slotMap.commit()
-    }
-    
-    func fullSynchronize() throws {
-        // First step of synchronization is to synchronize all of the content to disk. If any one of these fail, the slot map commit will not go through.
-        // If the slot map is not committed, any appends to the database will be intentionally lost on next load, then deleted during compaction.
-        try vectorStore.fullSynchronize()
-        try slotMap.fullSynchronizeFile()
-        try documentLog.fullSynchronizeFile()
-
-        // Mark the changes synced as complete by writing the header and updating the durable tracker.
-        try slotMap.commit()
-    }
 }
 
-// MARK: Creation & Loading
+// MARK: Creation & Loading & Closing
 extension DatabaseGeneration {
     /// Load a database generation at the given parent directory
     /// - Parameters:
@@ -177,5 +155,27 @@ extension DatabaseGeneration {
         let currentDatabasePointerLocation = parentDirectory.appending(path: "current")
         let pointerContent = "\(generation)"
         try pointerContent.write(to: currentDatabasePointerLocation, atomically: true, encoding: .utf8)
+    }
+    
+    func synchronize() throws {
+        // First step of synchronization is to synchronize all of the content to disk. If any one of these fail, the slot map commit will not go through.
+        // If the slot map is not committed, any appends to the database will be intentionally lost on next load, then deleted during compaction.
+        try vectorStore.synchronize()
+        try slotMap.synchronizeFile()
+        try documentLog.synchronizeFile()
+
+        // Mark the changes synced as complete by writing the header and updating the durable tracker.
+        try slotMap.commit()
+    }
+
+    func fullSynchronize() throws {
+        // First step of synchronization is to synchronize all of the content to disk. If any one of these fail, the slot map commit will not go through.
+        // If the slot map is not committed, any appends to the database will be intentionally lost on next load, then deleted during compaction.
+        try vectorStore.fullSynchronize()
+        try slotMap.fullSynchronizeFile()
+        try documentLog.fullSynchronizeFile()
+
+        // Mark the changes synced as complete by writing the header and updating the durable tracker.
+        try slotMap.commit()
     }
 }

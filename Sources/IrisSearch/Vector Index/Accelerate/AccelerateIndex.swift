@@ -40,6 +40,7 @@ final class AccelerateIndex: VectorIndex {
             generation = try DatabaseGeneration.load(generation: currentGeneration, in: indexLocation)
         } else {
             generation = try DatabaseGeneration.new(at: indexLocation, generation: 0, dimensions: UInt64(embeddingProvider.dimension))
+            try DatabaseGeneration.writeCurrentDatabasePointer(for: 0, in: indexLocation)
         }
         
         guard generation.vectorStore.dimensions == embeddingProvider.dimension else {
@@ -183,6 +184,13 @@ extension AccelerateIndex {
 
 // MARK: Compaction
 extension AccelerateIndex {
+    /// Compacts the current generation into a new generation
+    ///
+    /// Since deletions never remove content from `vec.bin`, the only way to reclaim space is through a compaction that occurs whenever ``AccelerateIndex/needsCompaction`` flips and a delete or update is pushed from IrisDB.
+    ///
+    /// Compaction is a three step process, the first is to create the compaction plan which figures out how to re-organize the live documents into a contagious array. This is done by looping over ``DocumentLog/ranges`` and inserting documents one after another. Since ``DocumentLog/ranges`` only tracks live documents, this makes sure that the new plan is only for live documents.
+    /// The second step is to actually create the new database. This is done by looping over the planned moves and copying data from the existing `vec.bin` into a new `vec.bin`. This is done off the current thread, using a named ``Task/detached(name:)``.
+    /// The third step is the atomic replacement of the new file. The new database is written, synchronized and then swapped with the old one. A pointer is written to tell the next launch of the index what the new generation is.
     func compact() async throws {
         // We never want to run compaction more than once at the same time
         guard !compactionInProgress else { return }

@@ -14,6 +14,8 @@ final class SlotMapFile {
     
     public var count: Int { map.count }
     
+    private(set) var wasCleanShutdown: Bool
+    
     /// The count of slots that have been confirmed to be synced to disk.
     private var durableUpToSlot: Int = 0
 
@@ -22,6 +24,9 @@ final class SlotMapFile {
         let data = try Data.init(contentsOf: url)
         map = try SlotMap(bytes: data.byteArray)
         file = try BinaryFile(url: url)
+        
+        let committedLength = SlotMap.Header.byteCount + map.count * MemoryLayout<UInt64>.size
+        wasCleanShutdown = data.count == committedLength
     }
     
     public static func new(at url: URL, generation: UInt64 = 0) throws -> SlotMapFile {
@@ -102,11 +107,7 @@ final class SlotMapFile {
         try synchronizeFile()
         durableUpToSlot = map.count
     }
-    
-    func setCleanShutdown(_ value: Bool) {
-        map.setCleanShutdown(value)
-    }
-    
+        
     subscript(range: PartialRangeThrough<Int>) -> ArraySlice<UInt64> { map[range] }
 
     subscript(range: PartialRangeFrom<Int>) -> ArraySlice<UInt64> { map[range] }

@@ -36,16 +36,7 @@ final class SlotMap: DataExpressible {
             static let version = 4
             static let slotCount = 8
             static let generation = 16
-            static let flags = 24
-            static let checksum = 28
-        }
-        
-        struct Flags: OptionSet {
-            let rawValue: UInt8
-            
-            static let cleanShutdown = Flags(rawValue: 1 << 0)
-            
-            static let empty: Flags = []
+            static let checksum = 24
         }
 
         static let magic = Array("IMAP".utf8)
@@ -54,12 +45,10 @@ final class SlotMap: DataExpressible {
         
         let slotCount: Int
         let generation: UInt64
-        let flags: Flags
         
-        public init(slotCount: Int, generation: UInt64, flags: Flags) {
+        public init(slotCount: Int, generation: UInt64) {
             self.slotCount = slotCount
             self.generation = generation
-            self.flags = flags
         }
 
         public init(bytes: [UInt8]) throws {
@@ -98,7 +87,6 @@ final class SlotMap: DataExpressible {
 
             self.slotCount = claimedSlotCount
             self.generation = bytes.load(at: Offset.generation)
-            self.flags = Flags(rawValue: bytes.load(at: Offset.flags))
         }
 
         func encode(into bytes: inout [UInt8]) {
@@ -108,7 +96,6 @@ final class SlotMap: DataExpressible {
             bytes.store(SlotMap.Header.version, at: base + Offset.version)
             bytes.store(slotCount, at: base + Offset.slotCount)
             bytes.store(generation, at: base + Offset.generation)
-            bytes.store(flags.rawValue, at: base + Offset.flags)
             
             // Take a checksum of the first 28 bytes and store it.
             let checksum = Checksum.crc32(Array(bytes[base ..< base + Offset.checksum]))
@@ -134,11 +121,10 @@ final class SlotMap: DataExpressible {
     private(set) var entries: [UInt64]
     private(set) var deadCount: Int = 0
     private var generation: UInt64
-    private var flags: Header.Flags
-    
+        
     /// A computed header that matches the most recent slot information.
     var header: SlotMap.Header {
-        Header(slotCount: entries.count, generation: generation, flags: flags)
+        Header(slotCount: entries.count, generation: generation)
     }
     
     public var count: Int { entries.count }
@@ -150,7 +136,6 @@ final class SlotMap: DataExpressible {
     
     init(entries: [UInt64], generation: UInt64) {
         self.entries = entries
-        self.flags = .empty
         self.generation = generation
         scanDeadCount()
     }
@@ -173,8 +158,7 @@ final class SlotMap: DataExpressible {
         }
         
         self.generation = decodedHeader.generation
-        self.flags = decodedHeader.flags
-        
+                
         scanDeadCount()
     }
     
@@ -225,14 +209,6 @@ extension SlotMap {
         return entries[slot] != SlotMap.tombstoneValue
     }
     
-    func setCleanShutdown(_ value: Bool) {
-        if value {
-            self.flags.insert(.cleanShutdown)
-        } else {
-            self.flags.remove(.cleanShutdown)
-        }
-    }
-
     /// Get the byte offset for a slot in the byte representation of SlotMap.
     /// - Parameter slot: The slot to get the offset for
     /// - Returns: The number of bytes that need to be offset to start at `slot`.

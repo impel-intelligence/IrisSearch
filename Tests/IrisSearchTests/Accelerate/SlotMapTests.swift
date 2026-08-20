@@ -30,10 +30,9 @@ struct SlotMapTest {
     /// - Authored by: Claude Opus 5 (Anthropic)
     static func validHeaderBytes(
         slots: Int = 10,
-        generation: UInt64 = 3,
-        flags: SlotMap.Header.Flags = .cleanShutdown
+        generation: UInt64 = 3
     ) -> (bytes: [UInt8], fileLength: Int) {
-        let header = SlotMap.Header(slotCount: slots, generation: generation, flags: flags)
+        let header = SlotMap.Header(slotCount: slots, generation: generation)
         var bytes = header.encoded()
         bytes.append(contentsOf: repeatElement(0, count: MemoryLayout<UInt64>.size * slots))
         return (bytes, fileLength(forSlots: slots))
@@ -62,19 +61,18 @@ struct SlotMapTest {
     // MARK: - Format contract
 
     @Test func testHeaderByteSize() async throws {
-        let header = SlotMap.Header(slotCount: 0, generation: 0, flags: .empty)
+        let header = SlotMap.Header(slotCount: 0, generation: 0)
         let data = header.encoded()
         #expect(data.count == SlotMap.Header.byteCount, "An empty map should only be as big as the header.")
     }
 
     @Test func testHeaderFieldsLandOnDeclaredOffsets() async throws {
-        let (bytes, _) = Self.validHeaderBytes(slots: 10, generation: 3, flags: .cleanShutdown)
+        let (bytes, _) = Self.validHeaderBytes(slots: 10, generation: 3)
 
         #expect(Array(bytes[0..<4]) == Array("IMAP".utf8), "magic at offset 0")
         #expect(Array(bytes[4..<8]) == [1, 0, 0, 0], "version 1, little-endian u32 at offset 4")
         #expect(Array(bytes[8..<16]) == [10, 0, 0, 0, 0, 0, 0, 0], "slotCount 10, little-endian u64 at offset 8")
         #expect(Array(bytes[16..<24]) == [3, 0, 0, 0, 0, 0, 0, 0], "generation 3, little-endian u64 at offset 16")
-        #expect(bytes[24] == 1, "cleanShutdown flag at offset 24")
     }
 
     @Test func testMultiByteFieldsAreLittleEndianOnDisk() async throws {
@@ -82,7 +80,7 @@ struct SlotMapTest {
         // order of the slotCount field and never decodes, so the value is chosen for its byte
         // pattern rather than for being a plausible count. Routing it through the helper would
         // try to allocate a buffer for 72 quadrillion slots.
-        let bytes = SlotMap.Header(slotCount: 0x0102_0304_0506_0708, generation: 0, flags: .empty).encoded()
+        let bytes = SlotMap.Header(slotCount: 0x0102_0304_0506_0708, generation: 0).encoded()
 
         #expect(Array(bytes[8..<16]) == [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
                 "On-disk byte order is the format contract; it must not silently follow host order.")
@@ -92,7 +90,7 @@ struct SlotMapTest {
 
     @Test func testHeaderRoundTrip() async throws {
         let slotCount: Int = 10
-        let header = SlotMap.Header(slotCount: slotCount, generation: 3, flags: .cleanShutdown)
+        let header = SlotMap.Header(slotCount: slotCount, generation: 3)
         // A header is only decodable inside a buffer big enough to hold what it declares.
         var data = header.encoded()
         data.append(contentsOf: repeatElement(0, count: MemoryLayout<UInt64>.size * slotCount))
@@ -100,7 +98,6 @@ struct SlotMapTest {
 
         #expect(header.slotCount == decoded.slotCount, "Slot counts should be the same.")
         #expect(header.generation == decoded.generation, "Generation should be the same.")
-        #expect(header.flags == decoded.flags, "Flags should be the same.")
     }
 
     @Test func testReEncodingADecodedHeaderReproducesTheSameBytes() async throws {
@@ -112,21 +109,10 @@ struct SlotMapTest {
     }
 
     @Test func testEmptyHeaderRoundTrip() async throws {
-        let header = SlotMap.Header(slotCount: 0, generation: 0, flags: .empty)
+        let header = SlotMap.Header(slotCount: 0, generation: 0)
         let decoded = try SlotMap.Header(bytes: header.encoded())
 
         #expect(decoded.slotCount == 0)
-        #expect(decoded.flags == .empty)
-    }
-
-    @Test func testUnknownFlagBitsArePreserved() async throws {
-        // A newer build may set bits this one does not know. Dropping them on a rewrite would
-        // silently downgrade the file rather than fail loudly.
-        let future = SlotMap.Header.Flags(rawValue: 0b1000_0001)
-        let header = SlotMap.Header(slotCount: 0, generation: 0, flags: future)
-        let decoded = try SlotMap.Header(bytes: header.encoded())
-
-        #expect(decoded.flags.rawValue == 0b1000_0001)
     }
 
     // MARK: - Validation gates
@@ -404,13 +390,12 @@ struct SlotMapTest {
         // Built header-first because `header` is private(set) and `SlotMap(entries:)` always
         // starts at generation 0 with no flags -- there is currently no way to reach any other
         // header state through the type's own API, which is itself worth noticing.
-        var bytes = SlotMap.Header(slotCount: 3, generation: 42, flags: .cleanShutdown).encoded()
+        var bytes = SlotMap.Header(slotCount: 3, generation: 42).encoded()
         [UInt64(1), 2, 3].map { $0.littleEndian }.withUnsafeBytes { bytes.append(contentsOf: $0) }
 
         let decoded = try SlotMap(bytes: bytes)
 
         #expect(decoded.header.generation == 42, "generation drives the compaction directory swap.")
-        #expect(decoded.header.flags == .cleanShutdown, "A lost flag turns a clean start into a recovery scan.")
         #expect(decoded.entries == [1, 2, 3])
     }
 
