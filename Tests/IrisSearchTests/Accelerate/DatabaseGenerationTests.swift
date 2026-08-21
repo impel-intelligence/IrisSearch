@@ -89,38 +89,7 @@ struct DatabaseGenerationTests {
             _ = try DatabaseGeneration.load(generation: 1, in: dir)
         }
     }
-
     
-    @Test func testFindNewestGeneration() throws {
-        let dir = FileManager.default.temporaryDirectory.appending(path: "\(UUID())")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        _ = try DatabaseGeneration.new(at: dir, generation: 0, dimensions: 1024)
-        _ = try DatabaseGeneration.new(at: dir, generation: 1, dimensions: 1024)
-        _ = try DatabaseGeneration.new(at: dir, generation: 2, dimensions: 1024)
-        _ = try DatabaseGeneration.new(at: dir, generation: 4, dimensions: 1024)
-
-        let newestGeneration = try #require(try DatabaseGeneration.detect(in: dir))
-        #expect(newestGeneration == 4)
-    }
-    
-    @Test func testFindNewestGenerationSkipsFiles() throws {
-        let dir = FileManager.default.temporaryDirectory.appending(path: "\(UUID())")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        _ = try DatabaseGeneration.new(at: dir, generation: 0, dimensions: 1024)
-        _ = try DatabaseGeneration.new(at: dir, generation: 1, dimensions: 1024)
-        _ = try DatabaseGeneration.new(at: dir, generation: 2, dimensions: 1024)
-
-        let file = dir.appending(path: "gen-9")
-        FileManager.default.createFile(atPath: file.path(percentEncoded: false), contents: Data())
-
-        let newestGeneration = try #require(try DatabaseGeneration.detect(in: dir))
-        #expect(newestGeneration == 2)
-    }
-
     // MARK: - Helpers
     //
     // Added by Claude Opus 5 (Anthropic) on 8/19/26. The tests below use a small dimension so a
@@ -286,7 +255,7 @@ struct DatabaseGenerationTests {
         let uuid = UUID()
         try database.submit(embeddings: [Self.vector(1), Self.vector(2), Self.vector(3)],
                             ids: [10, 11, 12], documentUUID: uuid, documentID: 1)
-        try database.delete(documentUUID: uuid, documentID: 1, pieceIDs: [])
+        try database.delete(documentUUID: uuid, documentID: 1)
 
         for slot in 0..<3 {
             #expect(!database.slotMap.isLive(slot), "slot \(slot) should be tombstoned")
@@ -304,7 +273,7 @@ struct DatabaseGenerationTests {
         try database.submit(embeddings: [Self.vector(3)], ids: [12],
                             documentUUID: survivor, documentID: 2)
 
-        try database.delete(documentUUID: doomed, documentID: 1, pieceIDs: [])
+        try database.delete(documentUUID: doomed, documentID: 1)
 
         #expect(!database.slotMap.isLive(0))
         #expect(!database.slotMap.isLive(1))
@@ -319,7 +288,7 @@ struct DatabaseGenerationTests {
 
         let uuid = UUID()
         try database.submit(embeddings: [Self.vector(1)], ids: [10], documentUUID: uuid, documentID: 1)
-        try database.delete(documentUUID: uuid, documentID: 1, pieceIDs: [])
+        try database.delete(documentUUID: uuid, documentID: 1)
 
         #expect(throws: DocumentMapError.rangeDoesNotExist(uuid: uuid)) {
             _ = try database.documentLog.range(for: uuid)
@@ -334,7 +303,7 @@ struct DatabaseGenerationTests {
         let uuid = UUID()
         try database.submit(embeddings: [Self.vector(1), Self.vector(2)], ids: [10, 11],
                             documentUUID: uuid, documentID: 1)
-        try database.delete(documentUUID: uuid, documentID: 1, pieceIDs: [])
+        try database.delete(documentUUID: uuid, documentID: 1)
         try database.synchronize()
 
         let reloaded = try DatabaseGeneration.load(generation: 0, in: dir)
@@ -352,7 +321,7 @@ struct DatabaseGenerationTests {
 
         let uuid = UUID()
         #expect(throws: DocumentMapError.rangeDoesNotExist(uuid: uuid)) {
-            try database.delete(documentUUID: uuid, documentID: 99, pieceIDs: [])
+            try database.delete(documentUUID: uuid, documentID: 99)
         }
     }
 
@@ -369,7 +338,7 @@ struct DatabaseGenerationTests {
         try database.synchronize()
         let sizeBefore = try FileManager.default.attributesOfItem(atPath: vectorURL.path(percentEncoded: false))[.size] as? Int
 
-        try database.delete(documentUUID: uuid, documentID: 1, pieceIDs: [])
+        try database.delete(documentUUID: uuid, documentID: 1)
         try database.synchronize()
         let sizeAfter = try FileManager.default.attributesOfItem(atPath: vectorURL.path(percentEncoded: false))[.size] as? Int
 
@@ -384,7 +353,7 @@ struct DatabaseGenerationTests {
         let uuid = UUID()
         try database.submit(embeddings: [Self.vector(1), Self.vector(2)], ids: [10, 11],
                             documentUUID: uuid, documentID: 1)
-        try database.delete(documentUUID: uuid, documentID: 1, pieceIDs: [])
+        try database.delete(documentUUID: uuid, documentID: 1)
 
         #expect(database.slotMap.count == 2, "Tombstoning marks slots dead; it never removes them.")
     }

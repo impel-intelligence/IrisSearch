@@ -14,7 +14,7 @@ enum GenerationMutation {
     case delete(uuid: UUID)
 }
 
-enum AccelerateIndexError: Error {
+enum AccelerateIndexError: Error, Equatable {
     case mismatchedDimensions(found: Int, expected: Int)
     case embeddingIdLengthMismatch(embeddings: Int, ids: Int)
 }
@@ -26,6 +26,8 @@ final class AccelerateIndex: VectorIndex {
     private var generation: DatabaseGeneration
     
     private var compactionInProgress: Bool = false
+    
+    var needsCompaction: Bool { generation.slotMap.deadFraction > SlotMap.acceptableDeadFraction }
     
     /// A set of mutations that were submitted during a compaction. Are used to mutate the new database generation after compaction completes.
     private var pendingMutations: [GenerationMutation] = []
@@ -186,12 +188,14 @@ extension AccelerateIndex {
 extension AccelerateIndex {
     /// Compacts the current generation into a new generation
     ///
+    /// Uses `nonisolated(nonsending)` which is only safe because the only spot that leaves the actor is the `Task.detached`.  The only thing captured in that Task are local variables, which makes this data-race safe.
+    ///
     /// Since deletions never remove content from `vec.bin`, the only way to reclaim space is through a compaction that occurs whenever ``AccelerateIndex/needsCompaction`` flips and a delete or update is pushed from IrisDB.
     ///
     /// Compaction is a three step process, the first is to create the compaction plan which figures out how to re-organize the live documents into a contagious array. This is done by looping over ``DocumentLog/ranges`` and inserting documents one after another. Since ``DocumentLog/ranges`` only tracks live documents, this makes sure that the new plan is only for live documents.
     /// The second step is to actually create the new database. This is done by looping over the planned moves and copying data from the existing `vec.bin` into a new `vec.bin`. This is done off the current thread, using a named ``Task/detached(name:)``.
     /// The third step is the atomic replacement of the new file. The new database is written, synchronized and then swapped with the old one. A pointer is written to tell the next launch of the index what the new generation is.
-    func compact() async throws {
+    nonisolated(nonsending) func compact() async throws {
         // We never want to run compaction more than once at the same time
         guard !compactionInProgress else { return }
         compactionInProgress = true
@@ -299,7 +303,7 @@ extension AccelerateIndex {
             
             try currentGeneration.vectorStore.withVectorMatrix { matrixPointer in
                 let rangeStartOffset = currentSlots.lowerBound * currentGeneration.vectorStore.dimensions
-                let rangeSize = currentSlots.count * currentGeneration.vectorStore.dimensions
+                let rangeSize = (currentSlots.count * currentGeneration.vectorStore.dimensions) * MemoryLayout<Float>.size
                 let rangePointer = matrixPointer.advanced(by: rangeStartOffset)
                 let vectorDataBlock = UnsafeRawBufferPointer(start: rangePointer, count: rangeSize)
                 
@@ -309,4 +313,4 @@ extension AccelerateIndex {
 
         try newGeneration.documentLog.append(uuid: uuid, documentID: documentID, slots: newSlots, live: true)
     }
-    }
+}

@@ -175,9 +175,9 @@ extension VectorStoreFile {
     
     @discardableResult
     public func write(rawVectors: Data, at slot: Int) throws -> Range<Int> {
-        let dataCount = rawVectors.count
+        let dataCount = rawVectors.count / slotByteCount
         let range = slot..<(slot + dataCount)
-        guard range.lowerBound > 0, range.upperBound <= capacity else {
+        guard range.lowerBound >= 0, range.upperBound <= capacity else {
             throw VectorFileError.notEnoughSpaceInFile(requested: range, capacity: capacity)
         }
         try write(data: rawVectors, at: byteOffset(for: slot))

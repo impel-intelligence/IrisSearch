@@ -13,9 +13,11 @@ final class SlotMapFile {
     private let url: URL
     
     public var count: Int { map.count }
-    
+    public var deadCount: Int { map.deadCount }
+    public var deadFraction: Double { map.deadFraction }
+
     private(set) var wasCleanShutdown: Bool
-    
+
     /// The count of slots that have been confirmed to be synced to disk.
     private var durableUpToSlot: Int = 0
 

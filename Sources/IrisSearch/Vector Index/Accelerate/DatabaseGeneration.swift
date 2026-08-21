@@ -68,8 +68,8 @@ extension DatabaseGeneration {
     }
     
     func delete(documentUUID: UUID, documentID: Int64) throws {
-        // Find the slot ranges for the document. This will throw if the document has no range.
-        let range = try documentLog.range(for: documentUUID)
+        // Find the slot ranges for the document. If the document does not exist in the log it never existed so it can't be deleted so just no-op.
+        guard let range = try? documentLog.range(for: documentUUID) else { return }
         
         // Remove the ranges from the slot map so they will be ignored in any searches.
         try slotMap.tombstone(range: range)

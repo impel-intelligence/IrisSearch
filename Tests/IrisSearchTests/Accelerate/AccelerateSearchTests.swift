@@ -28,7 +28,7 @@ struct AccelerateSearchTests {
 
     /// One-hot unit vectors, so an inner product is 1.0 against itself and 0.0 against any other.
     /// That makes every expected score exact rather than approximate.
-    static func basis(_ axis: Int) -> [Float] {
+    static func vector(_ axis: Int) -> [Float] {
         var v = [Float](repeating: 0, count: dimensions)
         v[axis] = 1
         return v
@@ -63,24 +63,24 @@ struct AccelerateSearchTests {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        #expect(try index.search(query: Self.basis(0), kItems: 10).isEmpty)
+        #expect(try index.search(query: Self.vector(0), kItems: 10).isEmpty)
     }
 
     @Test func testSearchWithZeroKReturnsNothing() throws {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        try index.addDocument(document: Self.document(id: 1, pieces: [(10, Self.basis(0))]))
-        #expect(try index.search(query: Self.basis(0), kItems: 0).isEmpty)
+        try index.addDocument(document: Self.document(id: 1, pieces: [(10, Self.vector(0))]))
+        #expect(try index.search(query: Self.vector(0), kItems: 0).isEmpty)
     }
 
     @Test func testQueryOfTheWrongDimensionThrows() throws {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        try index.addDocument(document: Self.document(id: 1, pieces: [(10, Self.basis(0))]))
+        try index.addDocument(document: Self.document(id: 1, pieces: [(10, Self.vector(0))]))
 
-        #expect(throws: AccelerateIndexError.self) {
+        #expect(throws: AccelerateIndexError.mismatchedDimensions(found: 2, expected: Self.dimensions)) {
             _ = try index.search(query: [1, 0], kItems: 5)
         }
     }
@@ -92,10 +92,10 @@ struct AccelerateSearchTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         try index.addDocument(document: Self.document(id: 1, pieces: [
-            (10, Self.basis(0)), (11, Self.basis(1)), (12, Self.basis(2)),
+            (10, Self.vector(0)), (11, Self.vector(1)), (12, Self.vector(2)),
         ]))
 
-        let results = try index.search(query: Self.basis(1), kItems: 3)
+        let results = try index.search(query: Self.vector(1), kItems: 3)
 
         #expect(results.count == 3)
         #expect(abs(results[0].distance - 1.0) < 1e-5, "an identical unit vector scores exactly 1")
@@ -113,7 +113,7 @@ struct AccelerateSearchTests {
             (12, [0.0, 1.0, 0, 0]),
         ]))
 
-        let results = try index.search(query: Self.basis(0), kItems: 3)
+        let results = try index.search(query: Self.vector(0), kItems: 3)
         let scores = results.map(\.distance)
 
         #expect(scores == scores.sorted(by: >), "got \(scores)")
@@ -124,19 +124,19 @@ struct AccelerateSearchTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         try index.addDocument(document: Self.document(id: 1, pieces: [
-            (10, Self.basis(0)), (11, Self.basis(1)), (12, Self.basis(2)), (13, Self.basis(3)),
+            (10, Self.vector(0)), (11, Self.vector(1)), (12, Self.vector(2)), (13, Self.vector(3)),
         ]))
 
-        #expect(try index.search(query: Self.basis(0), kItems: 2).count == 2)
+        #expect(try index.search(query: Self.vector(0), kItems: 2).count == 2)
     }
 
     @Test func testKLargerThanTheCorpusReturnsEverything() throws {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        try index.addDocument(document: Self.document(id: 1, pieces: [(10, Self.basis(0)), (11, Self.basis(1))]))
+        try index.addDocument(document: Self.document(id: 1, pieces: [(10, Self.vector(0)), (11, Self.vector(1))]))
 
-        #expect(try index.search(query: Self.basis(0), kItems: 100).count == 2)
+        #expect(try index.search(query: Self.vector(0), kItems: 100).count == 2)
     }
 
     // MARK: - Identity of the returned id
@@ -149,10 +149,10 @@ struct AccelerateSearchTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         try index.addDocument(document: Self.document(id: 1, pieces: [
-            (500, Self.basis(0)), (501, Self.basis(1)),
+            (500, Self.vector(0)), (501, Self.vector(1)),
         ]))
 
-        let results = try index.search(query: Self.basis(0), kItems: 1)
+        let results = try index.search(query: Self.vector(0), kItems: 1)
 
         #expect(results.first?.id == 500,
                 "expected the piece rowid 500, got \(results.first?.id ?? -1)")
@@ -162,10 +162,10 @@ struct AccelerateSearchTests {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        try index.addDocument(document: Self.document(id: 1, pieces: [(700, Self.basis(0))]))
-        try index.addDocument(document: Self.document(id: 2, pieces: [(800, Self.basis(1))]))
+        try index.addDocument(document: Self.document(id: 1, pieces: [(700, Self.vector(0))]))
+        try index.addDocument(document: Self.document(id: 2, pieces: [(800, Self.vector(1))]))
 
-        let results = try index.search(query: Self.basis(1), kItems: 1)
+        let results = try index.search(query: Self.vector(1), kItems: 1)
         #expect(results.first?.id == 800)
     }
 
@@ -175,14 +175,14 @@ struct AccelerateSearchTests {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        let doomed = Self.document(id: 1, pieces: [(10, Self.basis(0))])
-        let survivor = Self.document(id: 2, pieces: [(11, Self.basis(1))])
+        let doomed = Self.document(id: 1, pieces: [(10, Self.vector(0))])
+        let survivor = Self.document(id: 2, pieces: [(11, Self.vector(1))])
         try index.addDocument(document: doomed)
         try index.addDocument(document: survivor)
 
         try index.removeDocument(documentUUID: doomed.uuid, documentID: 1, pieceIDs: [10])
 
-        let results = try index.search(query: Self.basis(0), kItems: 10)
+        let results = try index.search(query: Self.vector(0), kItems: 10)
         #expect(!results.contains { $0.id == 10 }, "a tombstoned slot must never reach the results")
     }
 
@@ -195,7 +195,7 @@ struct AccelerateSearchTests {
 
         var documents: [IrisDocument] = []
         for axis in 0..<4 {
-            let document = Self.document(id: Int64(axis + 1), pieces: [(Int64(10 + axis), Self.basis(axis))])
+            let document = Self.document(id: Int64(axis + 1), pieces: [(Int64(10 + axis), Self.vector(axis))])
             documents.append(document)
             try index.addDocument(document: document)
         }
@@ -205,7 +205,7 @@ struct AccelerateSearchTests {
                                      documentID: document.id!, pieceIDs: [])
         }
 
-        let results = try index.search(query: Self.basis(3), kItems: 3)
+        let results = try index.search(query: Self.vector(3), kItems: 3)
         #expect(results.count == 1, "one document survives, so one result must come back")
         #expect(results.first?.id == 13)
     }
@@ -216,12 +216,12 @@ struct AccelerateSearchTests {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        let first = Self.document(id: 1, pieces: [(10, Self.basis(0)), (11, Self.basis(1))])
-        let second = Self.document(id: 2, pieces: [(20, Self.basis(2)), (21, Self.basis(3))])
+        let first = Self.document(id: 1, pieces: [(10, Self.vector(0)), (11, Self.vector(1))])
+        let second = Self.document(id: 2, pieces: [(20, Self.vector(2)), (21, Self.vector(3))])
         try index.addDocument(document: first)
         try index.addDocument(document: second)
 
-        let results = try index.search(query: Self.basis(0), kItems: 10, collection: second.uuid)
+        let results = try index.search(query: Self.vector(0), kItems: 10, collection: second.uuid)
 
         #expect(results.count == 2, "only the second document's two pieces are in range")
         #expect(results.allSatisfy { $0.id == 20 || $0.id == 21 },
@@ -234,13 +234,13 @@ struct AccelerateSearchTests {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        let first = Self.document(id: 1, pieces: [(10, Self.basis(0)), (11, Self.basis(0))])
-        let second = Self.document(id: 2, pieces: [(20, Self.basis(3))])
+        let first = Self.document(id: 1, pieces: [(10, Self.vector(0)), (11, Self.vector(0))])
+        let second = Self.document(id: 2, pieces: [(20, Self.vector(3))])
         try index.addDocument(document: first)
         try index.addDocument(document: second)
 
         // basis(3) is orthogonal to everything in `first` and identical to the one piece in `second`.
-        let results = try index.search(query: Self.basis(3), kItems: 5, collection: second.uuid)
+        let results = try index.search(query: Self.vector(3), kItems: 5, collection: second.uuid)
 
         #expect(results.count == 1)
         #expect(abs((results.first?.distance ?? 0) - 1.0) < 1e-5,
@@ -251,10 +251,10 @@ struct AccelerateSearchTests {
         let (index, dir) = try Self.makeIndex()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        try index.addDocument(document: Self.document(id: 1, pieces: [(10, Self.basis(0))]))
+        try index.addDocument(document: Self.document(id: 1, pieces: [(10, Self.vector(0))]))
 
         #expect(throws: DocumentMapError.self) {
-            _ = try index.search(query: Self.basis(0), kItems: 5, collection: UUID())
+            _ = try index.search(query: Self.vector(0), kItems: 5, collection: UUID())
         }
     }
 
@@ -266,7 +266,7 @@ struct AccelerateSearchTests {
         let imageOnly = Self.document(id: 1, pieces: [])
         try index.addDocument(document: imageOnly)
 
-        #expect(try index.search(query: Self.basis(0), kItems: 5, collection: imageOnly.uuid).isEmpty)
+        #expect(try index.search(query: Self.vector(0), kItems: 5, collection: imageOnly.uuid).isEmpty)
     }
 
     // MARK: - Normalisation
@@ -277,7 +277,7 @@ struct AccelerateSearchTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         try index.addDocument(document: Self.document(id: 1, pieces: [
-            (10, Self.basis(0)), (11, Self.basis(1)),
+            (10, Self.vector(0)), (11, Self.vector(1)),
         ]))
 
         let unit = try index.search(query: [1, 0, 0, 0], kItems: 2)

@@ -22,8 +22,11 @@ struct Compactor: Sendable {
     let dimensions: Int
     
     func run() throws -> DatabaseGeneration {
+        // If the plan is empty everything was deleted, so just set the new slots to 0
+        let newMaximumSlots = plan.moves.map( { $0.newRange.upperBound }).max() ?? 0
+        
         let newGeneration = try DatabaseGeneration.new(at: destinationParent, generation: generation, dimensions: UInt64(dimensions))
-        try newGeneration.vectorStore.reserve(upTo: slots.count)
+        try newGeneration.vectorStore.reserve(upTo: newMaximumSlots)
         
         let vectorSource = try Data(contentsOf: vectorFile, options: .alwaysMapped)
         
@@ -43,7 +46,7 @@ struct Compactor: Sendable {
                 }
                 
                 let rangeStartOffset = move.sourceRange.lowerBound * dimensions
-                let rangeSize = move.sourceRange.count * dimensions
+                let rangeSize = (move.sourceRange.count * dimensions) * MemoryLayout<Float>.size
                 let rangePointer = base.advanced(by: rangeStartOffset)
                 let vectorDataBlock = UnsafeRawBufferPointer(start: rangePointer, count: rangeSize)
                 

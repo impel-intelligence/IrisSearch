@@ -32,13 +32,17 @@ public actor IrisDB {
     private static let databaseExtension = "irisdb"
     
     private let databaseURL: URL
-    private let textIndex: any VectorIndex
+    private var textIndexURL: URL
+    
+    private let textIndex: AccelerateIndex
     private let textEmbedder: EmbeddingProvider
     
     private let dbPool: DatabasePool
     private let writeExecutor: KeyedExecutor<UUID> = KeyedExecutor()
     
     public let contextSize: Int = 512
+    
+    public var requiresReEmbedOfDatabase: Bool = false
     
     /// The total number of rows in `document_pieces`, cached to keep a `SELECT COUNT(*)` off the search path.
     ///
@@ -55,8 +59,17 @@ public actor IrisDB {
         self.textEmbedder = textEmbedder
         
         try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
+        
+        textIndexURL = databaseURL.appending(path: "text-index")
+        
+        try FileManager.default.createDirectory(at: textIndexURL, withIntermediateDirectories: true)
+        
+        if try IrisDB.needsAccelerateMigration(indexURL: textIndexURL) {
+            requiresReEmbedOfDatabase = true
+            try IrisDB.backupFaissIndex(in: textIndexURL)
+        }
 
-        self.textIndex = try FaissIndex(indexLocation: databaseURL.appending(path: "text-index"), embeddingProvider: textEmbedder)
+        self.textIndex = try AccelerateIndex.init(indexLocation: textIndexURL, embeddingProvider: textEmbedder)
 
         let sqliteURL = databaseURL.appending(path: "map").appendingPathExtension("sqlite")
 
@@ -124,6 +137,29 @@ public actor IrisDB {
         }
         
         try migrator.migrate(dbPool)
+    }
+    
+    public func migrateFromFaissIndex(progress: Progress) async throws {
+        try await reEmbedEntireDatabase(progress: progress)
+        
+        let backupDirectory = textIndexURL.appending(path: "backup")
+        try FileManager.default.removeItem(at: backupDirectory)
+    }
+    
+    private static func needsAccelerateMigration(indexURL: URL) throws -> Bool {
+        let databaseContents = try FileManager.default.contentsOfDirectory(at: indexURL, includingPropertiesForKeys: nil)
+        return databaseContents.contains(where: { $0.pathExtension == "index"} )
+    }
+    
+    private static func backupFaissIndex(in indexURL: URL) throws {
+        let backupDirectory = indexURL.appending(path: "backup")
+        try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+        
+        let files = try FileManager.default.contentsOfDirectory(at: indexURL, includingPropertiesForKeys: nil)
+
+        for file in files {
+            try FileManager.default.moveItem(at: file, to: indexURL.appending(path: file.lastPathComponent))
+        }
     }
 }
 
@@ -371,6 +407,10 @@ extension IrisDB {
         if let cachedPieceCount {
             self.cachedPieceCount = cachedPieceCount + updatedDocument.pieces.count - oldPieceIDs.count
         }
+        
+        if textIndex.needsCompaction {
+            try await textIndex.compact()
+        }
     }
     
     /// Delete a document by `uuid`.
@@ -406,12 +446,16 @@ extension IrisDB {
                 self.cachedPieceCount = cachedPieceCount - tmpDocument.pieces.count
             }
         }
+        
+        if textIndex.needsCompaction {
+            try await textIndex.compact()
+        }
     }
 }
 
 // MARK: Re-embedding Database
 extension IrisDB {
-    public func reEmbedEntireDatabase() async throws {
+    public func reEmbedEntireDatabase(progress: Progress) async throws {
         let documents = try await dbPool.read { db in
             // Get all documents
             var documents = try IrisDocument.fetchAll(db)
@@ -423,6 +467,9 @@ extension IrisDB {
             return documents
         }
         
+        progress.totalUnitCount = Int64(documents.count)
+        progress.completedUnitCount = 0
+        
         // Go through all documents and run the update function with the same embeddable content. This will trigger re-embeds for everything.
         for document in documents {
             try await updateDocument(
@@ -431,6 +478,7 @@ extension IrisDB {
                 description: document.description,
                 embeddableContent: document.pieces.map(\.content)
             )
+            progress.completedUnitCount += 1
         }
     }
 }
@@ -543,8 +591,14 @@ extension IrisDB {
     public func search(query: IrisQuery, nItems: Int = 10, semanticCutoff: Float = 0.6, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> [SearchResult] {
         guard nItems > 0 else { throw IrisDBError.nLessThanZero }
         
-        let maximumPieces = try await dbPool.read { db in
-            return try DocumentPiece.fetchCount(db)
+        var maximumPieces: Int
+        if let cachedPieceCount {
+            maximumPieces = cachedPieceCount
+        } else {
+            maximumPieces = try await dbPool.read { db in
+                return try DocumentPiece.fetchCount(db)
+            }
+            cachedPieceCount = maximumPieces
         }
         
         guard maximumPieces > 0 else { throw IrisDBError.noDocuments }
@@ -565,7 +619,6 @@ extension IrisDB {
                 .filter(semanticTextPieces.map(\.id).contains(Column("id")))
                 .fetchAll(db)
         }
-        
 
         // Document Piece Database Search
         let syntacticTextDocumentPieces: [SearchableDocumentPiece] = (try await dbPool.read { db in

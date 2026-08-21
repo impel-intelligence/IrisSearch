@@ -181,7 +181,7 @@ struct SlotMapTest {
         // A torn write leaves an intact header describing slots that were never written.
         // The CRC cannot catch this: the damage is past the range it covers.
         // A file with room for exactly 3 slots, whose header claims four billion.
-        let header = SlotMap.Header(slotCount: 4_000_000_000, generation: 0, flags: .empty)
+        let header = SlotMap.Header(slotCount: 4_000_000_000, generation: 0)
         var bytes = header.encoded()
         bytes.append(contentsOf: repeatElement(0, count: MemoryLayout<UInt64>.size * 3))
 
@@ -194,7 +194,7 @@ struct SlotMapTest {
     }
 
     @Test func testAcceptsSlotCountExactlyFillingTheFile() async throws {
-        let header = SlotMap.Header(slotCount: 3, generation: 0, flags: .empty)
+        let header = SlotMap.Header(slotCount: 3, generation: 0)
         var bytes = header.encoded()
         bytes.append(contentsOf: repeatElement(0, count: MemoryLayout<UInt64>.size * 3))
         let decoded = try SlotMap.Header(bytes: bytes)
@@ -507,7 +507,7 @@ struct SlotMapTest {
     @Test func testDecodesEntriesAsLittleEndianRegardlessOfHost() async throws {
         // Built by hand rather than by the encoder, so a decoder that agrees with a buggy
         // encoder cannot make this pass.
-        var bytes = SlotMap.Header(slotCount: 2, generation: 0, flags: .empty).encoded()
+        var bytes = SlotMap.Header(slotCount: 2, generation: 0).encoded()
         bytes.append(contentsOf: [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01])
         bytes.append(contentsOf: [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
 
@@ -520,7 +520,7 @@ struct SlotMapTest {
         // Entry bytes are as untrusted as header bytes. A trap here aborts the process and no
         // catch can reach it.
         var generator = SystemRandomNumberGenerator()
-        let header = SlotMap.Header(slotCount: 4, generation: 0, flags: .empty).encoded()
+        let header = SlotMap.Header(slotCount: 4, generation: 0).encoded()
 
         for _ in 0..<200 {
             var bytes = header

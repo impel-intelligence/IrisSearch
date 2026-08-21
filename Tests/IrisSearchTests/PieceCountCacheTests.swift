@@ -132,7 +132,7 @@ class IrisDB_PieceCountCacheTests {
 
         // Re-embedding drives every document through `updateDocument` with unchanged content, so the count
         // should not move at all. This is where an unmaintained update path drifts furthest.
-        try await database.reEmbedEntireDatabase()
+        try await database.reEmbedEntireDatabase(progress: Progress())
 
         let expected = try await actualPieceCount(directories)
         let cached = await database.cachedPieceCount
