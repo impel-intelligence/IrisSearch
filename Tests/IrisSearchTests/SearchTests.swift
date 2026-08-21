@@ -62,7 +62,7 @@ class IrisDB_SearchTests {
         print("Loaded Documents in \(loadingTime)")
         
         let kItems = 10
-        let documents = try await database.search(query: .init(text: "sad music"), nItems: kItems)
+        let documents = try await database.search(query: .init(text: "glass"), nItems: kItems)
         #expect(documents.count == kItems)        
     }
     

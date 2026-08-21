@@ -3,7 +3,6 @@
 //  DigesterTests
 //
 //  by Taylor Lineman on 6/10/26.
-//  Edited by Claude Opus 5 (Anthropic) on 2026-08-17
 //
 
 import Testing
@@ -11,13 +10,6 @@ import Testing
 import IrisCommon
 import Foundation
 import TestUtilities
-
-/// A directory of PDFs used by the bulk speed test, or `nil` when no corpus has been supplied.
-///
-/// The arXiv papers this was originally written against are not distributed with the repository, because arXiv's default license does not grant redistribution rights to third parties. Drop any collection of PDFs into `Tests/Test Documents/Arxiv` to run this locally; see the README in that directory.
-///
-/// - Authored by: Claude Opus 5 (Anthropic)
-private let pdfCorpusURL: URL? = Bundle.module.url(forResource: "Arxiv", withExtension: nil, subdirectory: "Test Documents")
 
 struct PDFArgument {
     var url: URL
@@ -103,13 +95,10 @@ struct PDFTests {
         #expect(performance.average < 1)
     }
     
-    @Test("Speed Small PDFS", .enabled(if: pdfCorpusURL != nil, "No PDF corpus supplied; see Tests/Test Documents/README.md"))
+    @Test(.tags(.arxiv))
     func testPDFConversionSpeedSmallPDFS() async throws {
-        let papersURL = try #require(pdfCorpusURL)
-        let papers = try FileManager.default.contentsOfDirectory(atPath: papersURL.path(percentEncoded: false))
-            .filter { $0.lowercased().hasSuffix(".pdf") }
-            .shuffled()
-        try #require(!papers.isEmpty, "Corpus directory exists but contains no PDFs")
+        let papersURL = try #require(Bundle.module.url(forResource: "Arxiv", withExtension: nil, subdirectory: "Test Documents"))
+        let papers = try FileManager.default.contentsOfDirectory(atPath: papersURL.path(percentEncoded: false)).shuffled()
 
         let digester = PDFDigester()
         
