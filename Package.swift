@@ -29,7 +29,7 @@ let package = Package(
         .package(url: "https://github.com/scinfu/SwiftSoup", from: "2.13.6"),
         .package(url: "https://github.com/apple/swift-log", from: "1.6.0"),
         .package(url: "https://github.com/swiftlang/swift-markdown", from: "0.8.0"),
-        .package(url: "https://github.com/krzyzanowskim/CryptoSwift", from: "1.10.0")
+        .package(url: "https://github.com/krzyzanowskim/CryptoSwift", from: "1.10.0"),
         // Used only by the IrisBenchmark executable target.
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0")
     ],
