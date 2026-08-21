@@ -1,3 +1,4 @@
+This is a table of when mmul and dotpr are faster than each other. This can be used for a future hybrid searching method where the proper functions are used to achieve the best speed.
 
 | dims | matrix | vectors | `vDSP_mmul` | `vDSP_dotpr` | faster | by |
 | ---: | ---: | ---: | ---: | ---: | :--- | ---: |
