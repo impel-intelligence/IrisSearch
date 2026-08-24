@@ -84,6 +84,8 @@ struct IndexMigrationTests {
         let backupDirectory = directories.textIndexURL.appending(path: "backup")
         #expect(FileManager.default.fileExists(atPath: backupDirectory.path(percentEncoded: false)),
                 "the FAISS index is moved aside before the Accelerate index takes over")
+        #expect(FileManager.default.fileExists(atPath: backupDirectory.appending(path: "global.index").path(percentEncoded: false)),
+                "the FAISS index is moved aside before the Accelerate index takes over")
 
         // --- 4. Migrate.
         let progress = Progress()

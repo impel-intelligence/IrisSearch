@@ -193,13 +193,11 @@ final class DocumentLog {
     }
     
     private(set) var ranges: [UUID: DocumentRange]
-    private(set) var deadCount: Int = 0
     private(set) var nextSequence: UInt64 = 0
 
     private(set) var header: DocumentLog.Header
     
     public var count: Int { ranges.count }
-    public var deadFraction: Double { count == 0 ? 0 : Double(deadCount) / Double(count) }
     
     var byteCount: Int {
         DocumentLog.Header.byteCount + (count * Record.byteCount)
@@ -224,11 +222,12 @@ final class DocumentLog {
         var unfilteredRecords: [Record] = []
         
         for base in stride(from: Offset.records, to: expectedRecordEnd, by: Record.byteCount) {
-            guard let record = try? Record(bytes: bytes, at: base, maximumSlotCount: maximumSlotCount) else {
-                continue
+            do {
+                let record = try Record(bytes: bytes, at: base, maximumSlotCount: maximumSlotCount)
+                unfilteredRecords.append(record)
+            } catch {
+                Log.logger.error("Failed to load document record", error: error)
             }
-            
-            unfilteredRecords.append(record)
         }
 
         for record in unfilteredRecords.sorted(by: { $0.sequence < $1.sequence }) {
@@ -236,7 +235,7 @@ final class DocumentLog {
             ranges[record.uuid] = record.isLive ? DocumentRange(record) : nil
             
             if Int(record.sequence) > nextSequence {
-                nextSequence = record.sequence + 1
+                nextSequence = max(nextSequence, record.sequence + 1)
             }
         }
     }

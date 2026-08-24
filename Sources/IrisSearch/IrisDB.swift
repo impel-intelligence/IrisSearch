@@ -157,8 +157,8 @@ public actor IrisDB {
         
         let files = try FileManager.default.contentsOfDirectory(at: indexURL, includingPropertiesForKeys: nil)
 
-        for file in files {
-            try FileManager.default.moveItem(at: file, to: indexURL.appending(path: file.lastPathComponent))
+        for file in files where file.lastPathComponent != "backup" {
+            try FileManager.default.moveItem(at: file, to: backupDirectory.appending(path: file.lastPathComponent))
         }
     }
 }

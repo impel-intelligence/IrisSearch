@@ -117,7 +117,6 @@ final class SlotMap: DataExpressible {
 
     static let tombstoneValue: UInt64 = UInt64.max
     static let acceptableDeadFraction: Double = 0.25
-    static let minimumReclaimableSlots: Int = 1000
     
     private(set) var entries: [UInt64]
     private(set) var deadCount: Int = 0

@@ -244,6 +244,7 @@ extension AccelerateIndex {
     /// 1. If there exists a difference in the source ranges from the move and the range of the entry in the `currentGeneration` an update occurred so delete the moved data in `nextGeneration` and append the data from the `currentGeneration`.
     /// 2. If an entry does not exist in the `plan` but does exist in the `currentGeneration` an entry was appended. So append it to the `newGeneration`
     /// 3. If an entry exists in the `plan` but not in the `currentGeneration`, the entry was deleted so it needs to be deleted from the `newGeneration`
+    ///
     /// - Parameters:
     ///   - currentGeneration: The current ``DatabaseGeneration`` that is considered the source of truth.
     ///   - newGeneration: The new generation that was generated from compacting the `currentGeneration`, updates are made to it.
@@ -257,7 +258,7 @@ extension AccelerateIndex {
         for (uuid, documentRange) in currentRanges {
             if let move = movesByUUID[uuid] {
                 // If a range exists in both the plan and the current generation, check to see if there is a difference in slot ranges.
-                guard move.sourceRange != documentRange.range else { return }
+                guard move.sourceRange != documentRange.range else { continue }
                 
                 // If there is a difference, that means that the original slots went through the update path (delete, then append). To handle this, mirror that by tombstoning the move's new range and appending the new vectors to the end of the newGeneration
                 try newGeneration.slotMap.tombstone(range: move.newRange)
