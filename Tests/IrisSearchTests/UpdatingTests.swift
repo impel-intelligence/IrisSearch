@@ -16,6 +16,27 @@ import TestUtilities
 import AppleIntelligenceEmbedder
 
 class IrisDB_UpdatingTests {
+    @Test func updatingDocumentMetadataChangesTitleAndDescription() async throws {
+        let directories = TestingDirectories()
+
+        let embedder = try NLEmbedder(language: .english)
+        let database = try IrisDB(databaseLocation: directories.baseURL, databaseName: directories.databaseName, textEmbedder: embedder)
+
+        let uuid = UUID()
+        let originalContent = "Original content"
+        _ = try await database.createDocument(uuid: uuid, title: "Original", description: originalContent, embeddableContent: [.text(content: originalContent, location: DocumentLocation(sequenceIndex: 0, documentLength: 1, anchor: .text(characterRange: 0..<originalContent.count)))])
+
+        
+        let newTitle = "New Title"
+        let newDescription = "New Description"
+        
+        try await database.updateDocumentMetadata(uuid: uuid, title: newTitle, description: newDescription)
+        
+        let readDocument = try #require(try await database.readDocument(uuid: uuid))
+        #expect(readDocument.title == newTitle)
+        #expect(readDocument.description == newDescription)
+    }
+    
     @Test func updatingDocumentChangesContentAndPreservesID() async throws {
         let directories = TestingDirectories()
 

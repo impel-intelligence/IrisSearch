@@ -313,6 +313,27 @@ extension IrisDB {
         }
     }
     
+    /// Updates a document's metadata without changing the embeddable content
+    /// - Parameters:
+    ///   - uuid: The UUID of the document to update
+    ///   - title: The new title of the document.
+    ///   - description: The new description for the document
+    public func updateDocumentMetadata(uuid: UUID, title: String, description: String) async throws {
+        try await writeExecutor.run(uuid) {
+            try await self.dbPool.write { db in
+                guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else {
+                    Log.logger.warning("Could not find a document", metadata: ["uuid": "\(uuid.uuidString)"])
+                    return
+                }
+
+                document.title = title
+                document.description = description
+                
+                try document.save(db)
+            }
+        }
+    }
+    
     /// An internal function that handles actually updating 
     /// documents.
     ///
