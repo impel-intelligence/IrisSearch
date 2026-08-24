@@ -9,11 +9,6 @@ import Foundation
 import IrisCommon
 import Accelerate
 
-enum GenerationMutation {
-    case append(uuid: UUID, documentID: UInt64, slots: Range<Int>)
-    case delete(uuid: UUID)
-}
-
 enum AccelerateIndexError: Error, Equatable {
     case mismatchedDimensions(found: Int, expected: Int)
     case embeddingIdLengthMismatch(embeddings: Int, ids: Int)
@@ -28,10 +23,7 @@ final class AccelerateIndex: VectorIndex {
     private var compactionInProgress: Bool = false
     
     var needsCompaction: Bool { generation.slotMap.deadFraction > SlotMap.acceptableDeadFraction }
-    
-    /// A set of mutations that were submitted during a compaction. Are used to mutate the new database generation after compaction completes.
-    private var pendingMutations: [GenerationMutation] = []
-    
+        
     init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
         self.indexLocation = indexLocation
         self.embeddingProvider = embeddingProvider
@@ -79,18 +71,10 @@ extension AccelerateIndex {
         
         // Writes the submission to the database stores.
         let writtenSlots = try generation.submit(embeddings: embeddings, ids: ids, documentUUID: document.uuid, documentID: UInt64(document.id ?? 0))
-        
-        if compactionInProgress {
-            pendingMutations.append(.append(uuid: document.uuid, documentID: UInt64(document.id ?? 0), slots: writtenSlots))
-        }
     }
     
     func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {
         try generation.delete(documentUUID: documentUUID, documentID: documentID)
-        
-        if compactionInProgress {
-            pendingMutations.append(.delete(uuid: documentUUID))
-        }
     }
 }
 
@@ -213,7 +197,7 @@ extension AccelerateIndex {
             dimensions: generation.vectorStore.dimensions
         )
         
-        // Run the compaction on a background thread, during this mutations can be added into PendingMutations since the caller has given execution rights.
+        // Run the compaction on a background thread, during this the database can be mutated. Reconciling these mutations is handled in the reconcile function.
         let newGenerationNumber = try await Task.detached(name: "irisdb.index.compaction") {
             let newGeneration = try compactor.run()
             try newGeneration.fullSynchronize()
