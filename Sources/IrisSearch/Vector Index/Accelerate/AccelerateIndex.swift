@@ -108,12 +108,6 @@ extension AccelerateIndex {
     }
     
     /// Search across a range of slots and return the top `k` items.
-    ///  
-    /// - Parameters:
-    ///   - query: <#query description#>
-    ///   - k: <#k description#>
-    ///   - slots: <#slots description#>
-    /// - Returns: <#description#>
     private func search(query: [Float], kItems k: Int, slots: Range<Int>) throws -> [(id: Int, distance: Float)] {
         guard k > 0, !slots.isEmpty else { return [] }
         

@@ -166,6 +166,8 @@ extension DatabaseGeneration {
 
         // Mark the changes synced as complete by writing the header and updating the durable tracker.
         try slotMap.commit()
+        
+        changesSinceLastSync = 0
     }
 
     func fullSynchronize() throws {
@@ -177,5 +179,7 @@ extension DatabaseGeneration {
 
         // Mark the changes synced as complete by writing the header and updating the durable tracker.
         try slotMap.commit()
+        
+        changesSinceLastSync = 0
     }
 }
