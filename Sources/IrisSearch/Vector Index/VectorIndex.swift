@@ -11,6 +11,8 @@ import IrisCommon
 public protocol VectorIndex {
     init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws
     
+    func close() throws
+    
     func addDocument(document: IrisDocument) throws
     func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws
     

@@ -44,11 +44,11 @@ final class DatabaseGeneration {
 extension DatabaseGeneration {
     @discardableResult
     public func submit(embeddings: [[Float]], ids: [UInt64], documentUUID: UUID, documentID: UInt64) throws -> Range<Int> {
+        // Expand the vector store to fit the new slots
+        try vectorStore.reserve(upTo: slotMap.count + ids.count)
+
         // Get slots that the embeddings can go into by adding their ids to the slot map.
         let slots = try slotMap.append(contentsOf: ids)
-        
-        // Expand the vector store to fit the new slots
-        try vectorStore.reserve(upTo: slots.upperBound)
         
         // Write the vectors to into the start of their slot range.
         _ = try vectorStore.write(vectors: embeddings, at: slots.lowerBound)

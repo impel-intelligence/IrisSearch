@@ -79,7 +79,7 @@ struct IndexMigrationTests {
                                   databaseName: directories.databaseName,
                                   textEmbedder: embedder)
 
-        try #require(await database.requiresReEmbedOfDatabase)
+        try #require(await database.requiresFaissMigration)
 
         let backupDirectory = directories.textIndexURL.appending(path: "backup")
         #expect(FileManager.default.fileExists(atPath: backupDirectory.path(percentEncoded: false)),
@@ -113,13 +113,13 @@ struct IndexMigrationTests {
         let first = try IrisDB(databaseLocation: directories.baseURL,
                                databaseName: directories.databaseName,
                                textEmbedder: embedder)
-        #expect(await first.requiresReEmbedOfDatabase == false)
+        #expect(await first.requiresFaissMigration == false)
 
         // Reopening an index this build wrote must not look like a FAISS install.
         let second = try IrisDB(databaseLocation: directories.baseURL,
                                 databaseName: directories.databaseName,
                                 textEmbedder: embedder)
-        #expect(await second.requiresReEmbedOfDatabase == false)
+        #expect(await second.requiresFaissMigration == false)
     }
 
     @Test("Migrating an empty database completes without doing anything.")
@@ -138,7 +138,7 @@ struct IndexMigrationTests {
         let database = try IrisDB(databaseLocation: directories.baseURL,
                                   databaseName: directories.databaseName,
                                   textEmbedder: embedder)
-        try #require(await database.requiresReEmbedOfDatabase)
+        try #require(await database.requiresFaissMigration)
 
         let progress = Progress()
         try await database.migrateFromFaissIndex(progress: progress)

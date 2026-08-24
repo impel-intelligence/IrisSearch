@@ -41,6 +41,10 @@ final class AccelerateIndex: VectorIndex {
             throw AccelerateIndexError.mismatchedDimensions(found: generation.vectorStore.dimensions, expected: embeddingProvider.dimension)
         }
     }
+    
+    func close() throws {
+        try generation.fullSynchronize()
+    }
 }
 
 // MARK: Document Management
@@ -214,8 +218,8 @@ extension AccelerateIndex {
         try next.synchronize()
         try DatabaseGeneration.writeCurrentDatabasePointer(for: next.generation, in: indexLocation)
         
-        // Before the swap, make sure that
-        try FileDurability.syncDirectory(indexLocation)
+        // Before the swap, make sure that the directory is synced to disk. If it isn't its not that big of deal we still want to update the in-memory swap.
+        try? FileDurability.syncDirectory(indexLocation)
         
         let previous = generation.generation
         generation = next

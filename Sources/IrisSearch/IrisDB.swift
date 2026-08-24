@@ -42,7 +42,7 @@ public actor IrisDB {
     
     public let contextSize: Int = 512
     
-    public var requiresReEmbedOfDatabase: Bool = false
+    public var requiresFaissMigration: Bool = false
     
     /// The total number of rows in `document_pieces`, cached to keep a `SELECT COUNT(*)` off the search path.
     ///
@@ -65,7 +65,7 @@ public actor IrisDB {
         try FileManager.default.createDirectory(at: textIndexURL, withIntermediateDirectories: true)
         
         if try IrisDB.needsAccelerateMigration(indexURL: textIndexURL) {
-            requiresReEmbedOfDatabase = true
+            requiresFaissMigration = true
             try IrisDB.backupFaissIndex(in: textIndexURL)
         }
 
@@ -140,10 +140,16 @@ public actor IrisDB {
     }
     
     public func migrateFromFaissIndex(progress: Progress) async throws {
+        guard requiresFaissMigration else {
+            Log.logger.warning("Called faiss migration when no migration is needed.")
+            return
+        }
+        
         try await reEmbedEntireDatabase(progress: progress)
         
         let backupDirectory = textIndexURL.appending(path: "backup")
-        try FileManager.default.removeItem(at: backupDirectory)
+        try? FileManager.default.removeItem(at: backupDirectory)
+        requiresFaissMigration = false
     }
     
     private static func needsAccelerateMigration(indexURL: URL) throws -> Bool {
@@ -160,6 +166,11 @@ public actor IrisDB {
         for file in files where file.lastPathComponent != "backup" {
             try FileManager.default.moveItem(at: file, to: backupDirectory.appending(path: file.lastPathComponent))
         }
+    }
+    
+    /// Safely closes the database and ensures changes are saved.
+    public func close() throws {
+        try textIndex.close()
     }
 }
 
@@ -409,7 +420,7 @@ extension IrisDB {
         }
         
         if textIndex.needsCompaction {
-            try await textIndex.compact()
+            try? await textIndex.compact()
         }
     }
     
@@ -448,7 +459,7 @@ extension IrisDB {
         }
         
         if textIndex.needsCompaction {
-            try await textIndex.compact()
+            try? await textIndex.compact()
         }
     }
 }

@@ -45,6 +45,8 @@ final class FaissIndex: VectorIndex {
         try initializeDB()
     }
     
+    func close() throws { }
+    
     private func initializeDB() throws {
         if !FileManager.default.fileExists(atPath: indexLocation.path(percentEncoded: false)) {
             try FileManager.default.createDirectory(at: indexLocation, withIntermediateDirectories: true)
