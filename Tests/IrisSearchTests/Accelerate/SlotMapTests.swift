@@ -247,7 +247,7 @@ struct SlotMapTest {
         map.append(ids: [4, 5, 6, 7])
         #expect(map.header.slotCount == map.count)
 
-        map.tombstone(range: 0..<2)
+        try map.tombstone(range: 0..<2)
         #expect(map.header.slotCount == map.count, "Tombstoning does not remove slots.")
 
         let encoded = map.encoded()
@@ -285,7 +285,7 @@ struct SlotMapTest {
         // An earlier bounds guard was off by one at both ends, so the very first and very last
         // document silently failed to tombstone.
         let map = SlotMap(entries: [1, 2, 3, 4, 5], generation: 0)
-        map.tombstone(range: 0..<3)
+        try map.tombstone(range: 0..<3)
 
         #expect(map.deadCount == 3)
         #expect(!map.isLive(0))
@@ -295,7 +295,7 @@ struct SlotMapTest {
 
     @Test func testTombstoneMarksTheLastDocumentsRange() async throws {
         let map = SlotMap(entries: [1, 2, 3, 4, 5], generation: 0)
-        map.tombstone(range: 2..<5)
+        try map.tombstone(range: 2..<5)
 
         #expect(map.deadCount == 3)
         #expect(map.isLive(1))
@@ -304,8 +304,8 @@ struct SlotMapTest {
 
     @Test func testTombstoningTwiceDoesNotDoubleCount() async throws {
         let map = SlotMap(entries: [1, 2, 3, 4, 5], generation: 0)
-        map.tombstone(range: 1..<4)
-        map.tombstone(range: 1..<4)
+        try map.tombstone(range: 1..<4)
+        try map.tombstone(range: 1..<4)
 
         #expect(map.deadCount == 3, "deadCount counts tombstoned slots, not tombstone operations.")
         #expect(map.deadFraction == 0.6)
@@ -313,8 +313,8 @@ struct SlotMapTest {
 
     @Test func testOverlappingTombstonesCountEachSlotOnce() async throws {
         let map = SlotMap(entries: [1, 2, 3, 4, 5], generation: 0)
-        map.tombstone(range: 0..<3)
-        map.tombstone(range: 2..<5)
+        try map.tombstone(range: 0..<3)
+        try map.tombstone(range: 2..<5)
 
         #expect(map.deadCount == 5)
         #expect(map.deadFraction == 1.0)
@@ -403,7 +403,7 @@ struct SlotMapTest {
         // deadCount is derived, never written. After a load it must come back from the entries
         // themselves, or a compaction trigger reads a stale fraction.
         let map = SlotMap(entries: [1, 2, 3, 4, 5], generation: 0)
-        map.tombstone(range: 1..<3)
+        try map.tombstone(range: 1..<3)
 
         let decoded = try Self.roundTrip(map)
 
@@ -528,4 +528,15 @@ struct SlotMapTest {
             _ = try? SlotMap(bytes: bytes)
         }
     }
+    
+    @Test func testTombstoneOutOfRangeThrows() async throws {
+        // encode -> decode -> encode must reproduce the original bytes exactly. This is the
+        // single assertion that catches a dropped field, a widened field, or a shifted offset.
+        let map = SlotMap(entries: [1, 2], generation: 0)
+        
+        #expect(throws: SlotMapError.self) {
+            try map.tombstone(range: 2..<3)
+        }
+    }
+
 }

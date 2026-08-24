@@ -235,10 +235,15 @@ extension SlotMap {
     /// Internally this replaces entries with ``SlotMap/tombstoneValue``. This is because a deletion from the middle of the file would require re-writing the entire file after the deletion range. Instead of doing this, the slot map is occasionally compacted when ``SlotMap/deadFraction`` reaches ``SlotMap/acceptableDeadFraction``.
     ///
     /// - Parameter range: The range of slots to replace with ``SlotMap/tombstoneValue``
-    func tombstone(range: Range<Int>) {
-        guard range.lowerBound >= 0 && range.upperBound <= count else { return }
+    func tombstone(range: Range<Int>) throws {
+        guard range.lowerBound >= 0 && range.upperBound <= count else {
+            throw SlotMapError.tombstoneOutOfRange(range: range, real: 0..<count)
+        }
+        
         var newlyDead = 0
-        for slot in range where entries[slot] != SlotMap.tombstoneValue { newlyDead += 1 }
+        for slot in range where entries[slot] != SlotMap.tombstoneValue {
+            newlyDead += 1
+        }
         deadCount += newlyDead
         
         let tombstones = [UInt64](repeating: SlotMap.tombstoneValue.littleEndian, count: range.count)

@@ -70,9 +70,12 @@ final class SlotMapFile {
     ///
     /// - Parameter range: The range of slots to replace with ``SlotMap/tombstoneValue``
     func tombstone(range: Range<Int>) throws {
-        guard range.lowerBound >= 0 && range.upperBound <= map.count else { return }
+        guard range.lowerBound >= 0 && range.upperBound <= map.count else {
+            Log.logger.warning("Tombstone out of range, skipping because the document does not exist.")
+            return
+        }
         
-        map.tombstone(range: range)
+        try map.tombstone(range: range)
         
         // Find where the tomb-stoning starts
         let tombstoneStartPoint = map.byteOffset(for: range.lowerBound)
