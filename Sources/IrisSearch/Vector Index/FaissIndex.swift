@@ -9,6 +9,7 @@ import Foundation
 import SwiftFaiss
 import SwiftFaissC
 import IrisCommon
+import GRDB
 
 final class FaissIndex: VectorIndex {
     private static let indexExtension = "index"
@@ -39,6 +40,8 @@ final class FaissIndex: VectorIndex {
     
     var cachedDocumentIndices: [UUID: IDMap] = [:]
     
+    var needsRepair: Bool = false
+    
     init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws {
         self.indexLocation = indexLocation
         self.embeddingProvider = embeddingProvider
@@ -46,6 +49,7 @@ final class FaissIndex: VectorIndex {
     }
     
     func close() throws { }
+    func repair(using database: DatabasePool) -> [UUID] { [] }
     
     private func initializeDB() throws {
         if !FileManager.default.fileExists(atPath: indexLocation.path(percentEncoded: false)) {

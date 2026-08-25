@@ -20,7 +20,7 @@ enum DocumentMapError: Error, Equatable {
 }
 
 final class DocumentLog {
-    struct DocumentRange {
+    struct DocumentRecord {
         let id: UInt64
         let startSlot: Int
         let endSlot: Int
@@ -192,17 +192,18 @@ final class DocumentLog {
         static let records = 64
     }
     
-    private(set) var ranges: [UUID: DocumentRange]
+    private(set) var ranges: [UUID: DocumentRecord]
     private(set) var nextSequence: UInt64 = 0
-
     private(set) var header: DocumentLog.Header
     
+    private(set) var rejectedRecords: Int = 0
+    public var coveredSlotCount: Int { ranges.values.reduce(0) { $0 + $1.range.count } }
     public var count: Int { ranges.count }
-    
+
     var byteCount: Int {
         DocumentLog.Header.byteCount + (count * Record.byteCount)
     }
-    
+
     init(generation: UInt64) {
         header = DocumentLog.Header(generation: generation)
         ranges = [:]
@@ -214,7 +215,7 @@ final class DocumentLog {
         
         let recordBytes = bytes.count - Offset.records
         let expectedRecordEnd = Offset.records + ((recordBytes / Record.byteCount) * Record.byteCount)
-        
+
         guard expectedRecordEnd >= Offset.records else {
             return
         }
@@ -227,16 +228,15 @@ final class DocumentLog {
                 unfilteredRecords.append(record)
             } catch {
                 Log.logger.error("Failed to load document record", error: error)
+                rejectedRecords += 1
             }
         }
 
         for record in unfilteredRecords.sorted(by: { $0.sequence < $1.sequence }) {
             // isLive tells us if the record has been deleted, since document map is an append only log a non-live record needs to set the range to nil if it has previously been accounted for as live.
-            ranges[record.uuid] = record.isLive ? DocumentRange(record) : nil
+            ranges[record.uuid] = record.isLive ? DocumentRecord(record) : nil
             
-            if Int(record.sequence) > nextSequence {
-                nextSequence = max(nextSequence, record.sequence + 1)
-            }
+            nextSequence = max(nextSequence, record.sequence + 1)
         }
     }
     
@@ -262,7 +262,7 @@ final class DocumentLog {
 
 extension DocumentLog {
     func apply(record: DocumentLog.Record) {
-        ranges[record.uuid] = record.isLive ? DocumentRange(record) : nil
+        ranges[record.uuid] = record.isLive ? DocumentRecord(record) : nil
         nextSequence = max(nextSequence, record.sequence + 1)
     }
 }

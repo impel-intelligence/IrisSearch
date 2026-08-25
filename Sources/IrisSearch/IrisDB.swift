@@ -42,6 +42,7 @@ public actor IrisDB {
     
     public let contextSize: Int = 512
     
+    public var requiresRepair: Bool { textIndex.needsRepair }
     public var requiresFaissMigration: Bool = false
     
     /// The total number of rows in `document_pieces`, cached to keep a `SELECT COUNT(*)` off the search path.

@@ -16,9 +16,9 @@ struct CompactionPlanTests {
         let docOneUUID = UUID()
         let docTwoUUID = UUID()
         
-        let ranges: [UUID: DocumentLog.DocumentRange] = [
-            docOneUUID: DocumentLog.DocumentRange(id: 0, startSlot: 0, endSlot: 1),
-            docTwoUUID: DocumentLog.DocumentRange(id: 1, startSlot: 1, endSlot: 5),
+        let ranges: [UUID: DocumentLog.DocumentRecord] = [
+            docOneUUID: DocumentLog.DocumentRecord(id: 0, startSlot: 0, endSlot: 1),
+            docTwoUUID: DocumentLog.DocumentRecord(id: 1, startSlot: 1, endSlot: 5),
         ]
         
         let plan = CompactionPlan(documentRanges: ranges)
@@ -41,9 +41,9 @@ struct CompactionPlanTests {
         let docOneUUID = UUID()
         let docTwoUUID = UUID()
         
-        let ranges: [UUID: DocumentLog.DocumentRange] = [
-            docOneUUID: DocumentLog.DocumentRange(id: 0, startSlot: 0, endSlot: 1),
-            docTwoUUID: DocumentLog.DocumentRange(id: 1, startSlot: 4, endSlot: 5),
+        let ranges: [UUID: DocumentLog.DocumentRecord] = [
+            docOneUUID: DocumentLog.DocumentRecord(id: 0, startSlot: 0, endSlot: 1),
+            docTwoUUID: DocumentLog.DocumentRecord(id: 1, startSlot: 4, endSlot: 5),
         ]
         
         let plan = CompactionPlan(documentRanges: ranges)
@@ -65,8 +65,8 @@ struct CompactionPlanTests {
     func testCompactionPlanKeepsZeroLengthRange() async throws {
         let docOneUUID = UUID()
         
-        let ranges: [UUID: DocumentLog.DocumentRange] = [
-            docOneUUID: DocumentLog.DocumentRange(id: 0, startSlot: 0, endSlot: 0),
+        let ranges: [UUID: DocumentLog.DocumentRecord] = [
+            docOneUUID: DocumentLog.DocumentRecord(id: 0, startSlot: 0, endSlot: 0),
         ]
         
         let plan = CompactionPlan(documentRanges: ranges)
@@ -81,10 +81,10 @@ struct CompactionPlanTests {
 
     @Test("Slot count is the sum of every live range's length.")
     func testCompactionPlanSlotCount() async throws {
-        let ranges: [UUID: DocumentLog.DocumentRange] = [
-            UUID(): DocumentLog.DocumentRange(id: 0, startSlot: 0, endSlot: 3),
-            UUID(): DocumentLog.DocumentRange(id: 1, startSlot: 10, endSlot: 14),
-            UUID(): DocumentLog.DocumentRange(id: 2, startSlot: 20, endSlot: 21),
+        let ranges: [UUID: DocumentLog.DocumentRecord] = [
+            UUID(): DocumentLog.DocumentRecord(id: 0, startSlot: 0, endSlot: 3),
+            UUID(): DocumentLog.DocumentRecord(id: 1, startSlot: 10, endSlot: 14),
+            UUID(): DocumentLog.DocumentRecord(id: 2, startSlot: 20, endSlot: 21),
         ]
 
         let plan = CompactionPlan(documentRanges: ranges)
@@ -102,11 +102,11 @@ struct CompactionPlanTests {
 
     @Test("Destination ranges abut with no gaps, whatever the source spacing.")
     func testCompactionPlanProducesContiguousDestinations() async throws {
-        var ranges: [UUID: DocumentLog.DocumentRange] = [:]
+        var ranges: [UUID: DocumentLog.DocumentRecord] = [:]
         for index in 0..<20 {
             // Sources are deliberately spread out, as they would be after many deletions.
             let start = index * 7
-            ranges[UUID()] = DocumentLog.DocumentRange(id: UInt64(index),
+            ranges[UUID()] = DocumentLog.DocumentRecord(id: UInt64(index),
                                                        startSlot: start,
                                                        endSlot: start + (index % 3) + 1)
         }
@@ -128,9 +128,9 @@ struct CompactionPlanTests {
 
     @Test("Moves are ordered by source, so the rewrite is one forward pass over the old file.")
     func testCompactionPlanOrdersMovesBySource() async throws {
-        var ranges: [UUID: DocumentLog.DocumentRange] = [:]
+        var ranges: [UUID: DocumentLog.DocumentRecord] = [:]
         for index in 0..<32 {
-            ranges[UUID()] = DocumentLog.DocumentRange(id: UInt64(index),
+            ranges[UUID()] = DocumentLog.DocumentRecord(id: UInt64(index),
                                                        startSlot: index * 2,
                                                        endSlot: index * 2 + 1)
         }
@@ -144,10 +144,10 @@ struct CompactionPlanTests {
 
     @Test("No destination ever runs ahead of its source, so a forward copy cannot overwrite unread bytes.")
     func testCompactionPlanNeverMovesASlotForward() async throws {
-        var ranges: [UUID: DocumentLog.DocumentRange] = [:]
+        var ranges: [UUID: DocumentLog.DocumentRecord] = [:]
         for index in 0..<10 {
             let start = index * 5
-            ranges[UUID()] = DocumentLog.DocumentRange(id: UInt64(index),
+            ranges[UUID()] = DocumentLog.DocumentRecord(id: UInt64(index),
                                                        startSlot: start,
                                                        endSlot: start + 2)
         }
@@ -165,9 +165,9 @@ struct CompactionPlanTests {
         let imageOnlyUUID = UUID()
         let textUUID = UUID()
 
-        let ranges: [UUID: DocumentLog.DocumentRange] = [
-            imageOnlyUUID: DocumentLog.DocumentRange(id: 0, startSlot: 4, endSlot: 4),
-            textUUID: DocumentLog.DocumentRange(id: 1, startSlot: 8, endSlot: 11),
+        let ranges: [UUID: DocumentLog.DocumentRecord] = [
+            imageOnlyUUID: DocumentLog.DocumentRecord(id: 0, startSlot: 4, endSlot: 4),
+            textUUID: DocumentLog.DocumentRecord(id: 1, startSlot: 8, endSlot: 11),
         ]
 
         let plan = CompactionPlan(documentRanges: ranges)
@@ -183,11 +183,11 @@ struct CompactionPlanTests {
 
     @Test("An already-compact index plans the identity.")
     func testCompactionPlanOfACompactIndexIsTheIdentity() async throws {
-        var ranges: [UUID: DocumentLog.DocumentRange] = [:]
+        var ranges: [UUID: DocumentLog.DocumentRecord] = [:]
         var cursor = 0
         for index in 0..<12 {
             let length = (index % 4) + 1
-            ranges[UUID()] = DocumentLog.DocumentRange(id: UInt64(index),
+            ranges[UUID()] = DocumentLog.DocumentRecord(id: UInt64(index),
                                                        startSlot: cursor,
                                                        endSlot: cursor + length)
             cursor += length
@@ -203,9 +203,9 @@ struct CompactionPlanTests {
 
     @Test("The same document set always plans identically.")
     func testCompactionPlanIsDeterministic() async throws {
-        var ranges: [UUID: DocumentLog.DocumentRange] = [:]
+        var ranges: [UUID: DocumentLog.DocumentRecord] = [:]
         for index in 0..<16 {
-            ranges[UUID()] = DocumentLog.DocumentRange(id: UInt64(index),
+            ranges[UUID()] = DocumentLog.DocumentRecord(id: UInt64(index),
                                                        startSlot: index * 3,
                                                        endSlot: index * 3 + 2)
         }
@@ -224,9 +224,9 @@ struct CompactionPlanTests {
     
     @Test("Every document keeps its identity through the move.")
     func testCompactionPlanPreservesDocumentIdentity() async throws {
-        var ranges: [UUID: DocumentLog.DocumentRange] = [:]
+        var ranges: [UUID: DocumentLog.DocumentRecord] = [:]
         for index in 0..<10 {
-            ranges[UUID()] = DocumentLog.DocumentRange(id: UInt64(index * 100),
+            ranges[UUID()] = DocumentLog.DocumentRecord(id: UInt64(index * 100),
                                                        startSlot: index * 4,
                                                        endSlot: index * 4 + 3)
         }

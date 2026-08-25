@@ -7,11 +7,15 @@
 
 import Foundation
 import IrisCommon
+import GRDB
 
 public protocol VectorIndex {
+    var needsRepair: Bool { get }
+    
     init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws
     
     func close() throws
+    func repair(using pool: DatabasePool) throws -> [UUID]
     
     func addDocument(document: IrisDocument) throws
     func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws

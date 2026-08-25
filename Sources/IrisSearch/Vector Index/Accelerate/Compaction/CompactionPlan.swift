@@ -28,7 +28,7 @@ struct CompactionPlan: Sendable {
     /// This explicitly does not do any filtering of non-live entires. Document ranges comes from ``DocumentLog/ranges`` which only contains live entires. This is not validated by the type system, but is validated by ``DatabaseGenerationTests/testDeleteTombstonesTheWholeRange``.
     ///
     /// - Parameter documentRanges: The live document ranges to create a compaction plan for.
-    init(documentRanges: [UUID: DocumentLog.DocumentRange]) {
+    init(documentRanges: [UUID: DocumentLog.DocumentRecord]) {
         let orderedLogs = documentRanges
             .map { (uuid: $0.key, range: $0.value) }
             .sorted { $0.range.startSlot < $1.range.startSlot }

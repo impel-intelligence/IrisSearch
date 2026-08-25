@@ -26,6 +26,12 @@ final class DatabaseGeneration {
 
     private var url: URL
     
+    var needsRepair: Bool {
+        slotMap.hasUncommittedTail ||
+        documentLog.hasTornRecord ||
+        documentLog.coveredSlotCount != slotMap.count - slotMap.deadCount
+    }
+    
     private init(generation: UInt64, url: URL) throws {
         self.generation = generation
         self.url = url

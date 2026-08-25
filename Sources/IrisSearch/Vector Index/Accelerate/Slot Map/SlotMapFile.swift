@@ -16,19 +16,28 @@ final class SlotMapFile {
     public var deadCount: Int { map.deadCount }
     public var deadFraction: Double { map.deadFraction }
 
-    private(set) var wasCleanShutdown: Bool
+    /// Whether the file carries entry bytes past the slot count its header commits to.
+    ///
+    /// This is a narrower claim than "the process shut down cleanly", and the difference matters.
+    /// Tombstoning rewrites entries **in place**, so the file length never moves — a crash part way
+    /// through a delete leaves no trace here at all. Divergence on the delete path is caught by the
+    /// coverage check in ``DatabaseGeneration/needsRepair``, not by this flag.
+    ///
+    /// ``commit()`` trims the uncommitted tail away, so a committed file always reports `false`.
+    private(set) var hasUncommittedTail: Bool
 
-    /// The count of slots that have been confirmed to be synced to disk.
-    private var durableUpToSlot: Int = 0
+    /// The byte length this file would have if every in-memory entry were committed.
+    private var committedLength: Int { SlotMap.Header.byteCount + map.count * MemoryLayout<UInt64>.size }
 
     public init(url: URL) throws {
         self.url = url
         let data = try Data.init(contentsOf: url)
         map = try SlotMap(bytes: data.byteArray)
         file = try BinaryFile(url: url)
-        
-        let committedLength = SlotMap.Header.byteCount + map.count * MemoryLayout<UInt64>.size
-        wasCleanShutdown = data.count == committedLength
+            
+        // Spelled out rather than via `committedLength`: `self` is not usable until every stored
+        // property is initialised, and this is the last one.
+        hasUncommittedTail = data.count != SlotMap.Header.byteCount + map.count * MemoryLayout<UInt64>.size
     }
     
     public static func new(at url: URL, generation: UInt64 = 0) throws -> SlotMapFile {
@@ -39,7 +48,7 @@ final class SlotMapFile {
         try data.write(to: url, options: .withoutOverwriting)
         return try SlotMapFile(url: url)
     }
-    
+        
     /// Appends the slot ids to the end of the entries list.
     ///
     /// IDs are appended to the in-memory map and the file.The header is **not** persisted to disk here. The core reason for this is ordering the writes to disk. Since the header lives in the first section of the file, it would require two write calls to add. Two different write calls can not be ensured to reach disk at the same time. Because of this ``SlotMap.Header`` is written during the ``SlotMapFile/commit`` which is called from ``DatabaseGeneration/flush``..
@@ -109,8 +118,9 @@ final class SlotMapFile {
     /// The durable slot tracker `durableUpToSlot` represents the last slot that has been confirmed to be on disk (through `file.synchronize()`.
     func commit() throws {
         try writeHeader()
+        try file.scale(to: UInt64(committedLength))
         try synchronizeFile()
-        durableUpToSlot = map.count
+        hasUncommittedTail = false
     }
         
     subscript(range: PartialRangeThrough<Int>) -> ArraySlice<UInt64> { map[range] }

@@ -8,6 +8,7 @@
 import Foundation
 import IrisCommon
 import Accelerate
+import GRDB
 
 enum AccelerateIndexError: Error, Equatable {
     case mismatchedDimensions(found: Int, expected: Int)
@@ -23,6 +24,8 @@ final class AccelerateIndex: VectorIndex {
     private var compactionInProgress: Bool = false
     
     var needsCompaction: Bool { generation.slotMap.deadFraction > SlotMap.acceptableDeadFraction }
+    
+    var needsRepair: Bool { generation.needsRepair }
         
     init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
         self.indexLocation = indexLocation
@@ -44,6 +47,55 @@ final class AccelerateIndex: VectorIndex {
     
     func close() throws {
         try generation.fullSynchronize()
+    }
+    
+    func repair(using database: DatabasePool) throws -> [UUID] {
+        let inDB: Set<UUID> = try database.read { db in
+            let pieces = try IrisDocument.fetchAll(db)
+            return Set(pieces.map({ $0.uuid }))
+        }
+        
+        let inIndex = Set(generation.documentLog.ranges.keys)
+        let needsReindex = inDB.subtracting(inIndex)
+        
+        // Loop over all of the variables only in the index, not in the DB.
+        for uuid in inIndex.subtracting(inDB) {
+            guard let documentRange = generation.documentLog.ranges[uuid] else { continue }
+            try generation.slotMap.tombstone(range: documentRange.range)
+            try generation.documentLog.append(uuid: uuid, documentID: documentRange.id, slots: documentRange.range, live: false)
+        }
+        
+        var recordedLiveSlots: [Bool] = [Bool](repeating: false, count: generation.slotMap.count)
+        
+        for (uuid, record) in generation.documentLog.ranges {
+            let clampedRange = record.range.clamped(to: 0..<generation.slotMap.count)
+            recordedLiveSlots.replaceSubrange(clampedRange, with: repeatElement(true, count: clampedRange.count))
+        }
+        
+        var startOfRun: Int?
+        
+        for index in 0..<generation.slotMap.count {
+            let isSlotOrphaned = generation.slotMap.isLive(index) && !recordedLiveSlots[index]
+            
+            if startOfRun == nil && isSlotOrphaned {
+                // Start of a new run
+                startOfRun = index
+            } else if let safeStart = startOfRun, !isSlotOrphaned {
+                // If there is a start of the run, and this is no longer orphaned the run has finished at index - 1
+                Log.logger.info("Found orphaned set of slots: \(safeStart)..<\(index)")
+                let range = safeStart..<index
+                try generation.slotMap.tombstone(range: range)
+                startOfRun = nil
+            }
+        }
+        
+        if let startOfRun {
+            let range = startOfRun..<generation.slotMap.count
+            try generation.slotMap.tombstone(range: range)
+        }
+        
+        try generation.synchronize()
+        return Array(needsReindex)
     }
 }
 
@@ -74,7 +126,7 @@ extension AccelerateIndex {
         }
         
         // Writes the submission to the database stores.
-        let writtenSlots = try generation.submit(embeddings: embeddings, ids: ids, documentUUID: document.uuid, documentID: UInt64(document.id ?? 0))
+        _ = try generation.submit(embeddings: embeddings, ids: ids, documentUUID: document.uuid, documentID: UInt64(document.id ?? 0))
     }
     
     func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {

@@ -314,15 +314,22 @@ struct DatabaseGenerationTests {
         }
     }
 
-    @Test func testDeleteOfAnUnknownDocumentThrows() throws {
+    @Test func testDeleteOfAnUnknownDocumentIsANoOp() throws {
+        // A document with no range never made it into this generation, so there is nothing to
+        // tombstone and nothing to record. Repair leans on this: it re-drives deletes for documents
+        // that may already be gone, and a throw there would abort the rest of the pass.
         let dir = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let database = try DatabaseGeneration.new(at: dir, generation: 0, dimensions: UInt64(Self.testDimensions))
 
-        let uuid = UUID()
-        #expect(throws: DocumentMapError.rangeDoesNotExist(uuid: uuid)) {
-            try database.delete(documentUUID: uuid, documentID: 99)
-        }
+        let survivor = UUID()
+        try database.submit(embeddings: [Self.vector(1)], ids: [10], documentUUID: survivor, documentID: 1)
+
+        try database.delete(documentUUID: UUID(), documentID: 99)
+
+        #expect(database.slotMap.count == 1, "No slots may be added or removed.")
+        #expect(database.slotMap.isLive(0), "The unrelated document must be untouched.")
+        #expect(try database.documentLog.range(for: survivor) == 0..<1)
     }
 
     @Test func testDeleteDoesNotShrinkTheVectorFile() throws {
