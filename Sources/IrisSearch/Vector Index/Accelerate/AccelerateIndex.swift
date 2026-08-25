@@ -55,8 +55,7 @@ final class AccelerateIndex: VectorIndex {
     
     func repair(using database: DatabasePool) throws -> [UUID] {
         let inDB: Set<UUID> = try database.read { db in
-            let pieces = try IrisDocument.fetchAll(db)
-            return Set(pieces.map({ $0.uuid }))
+            try UUID.fetchSet(db, sql: "SELECT uuid FROM \(IrisDocument.databaseTableName)")
         }
         
         let inIndex = Set(generation.documentLog.ranges.keys)
