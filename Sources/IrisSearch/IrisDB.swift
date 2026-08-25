@@ -170,8 +170,27 @@ public actor IrisDB {
     }
     
     /// Safely closes the database and ensures changes are saved.
-    public func close() throws {
+    public func close() async throws {
         try textIndex.close()
+    }
+    
+    public func repairDatabase() async throws {
+        let reEmbed = try textIndex.repair(using: self.dbPool)
+        
+        for uuid in reEmbed {
+            guard let document = try await readDocument(uuid: uuid) else {
+                Log.logger.error("Failed to get document for re-embedding: \(uuid)")
+                continue
+            }
+            
+            try await updateDocument(
+                uuid: document.uuid,
+                title: document.title,
+                description: document.description,
+                embeddableContent: document.pieces.map(\.content)
+            )
+
+        }
     }
 }
 

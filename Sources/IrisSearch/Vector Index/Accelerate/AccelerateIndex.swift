@@ -146,7 +146,7 @@ extension AccelerateIndex {
     
     func search(query: [Float], kItems k: Int, collection: UUID) throws -> [(id: Int, distance: Float)] {
         // TODO: Populate
-        let searchRange = try generation.documentLog.range(for: collection)
+        guard let searchRange = try? generation.documentLog.range(for: collection) else { return [] }
         return try search(query: query, kItems: k, slots: searchRange)
     }
     
