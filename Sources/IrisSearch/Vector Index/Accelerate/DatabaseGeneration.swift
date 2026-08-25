@@ -26,6 +26,8 @@ final class DatabaseGeneration {
 
     private var url: URL
     
+    var faultInjector: FaultInjector?
+        
     var needsRepair: Bool {
         slotMap.hasUncommittedTail ||
         documentLog.hasTornRecord ||
@@ -52,15 +54,23 @@ extension DatabaseGeneration {
     public func submit(embeddings: [[Float]], ids: [UInt64], documentUUID: UUID, documentID: UInt64) throws -> Range<Int> {
         // Expand the vector store to fit the new slots
         try vectorStore.reserve(upTo: slotMap.count + ids.count)
+        
+        try faultInjector?(.afterReserve)
 
         // Get slots that the embeddings can go into by adding their ids to the slot map.
         let slots = try slotMap.append(contentsOf: ids)
         
+        try faultInjector?(.afterMapWrite)
+        
         // Write the vectors to into the start of their slot range.
         _ = try vectorStore.write(vectors: embeddings, at: slots.lowerBound)
 
+        try faultInjector?(.afterVectorWrite)
+        
         // Tell the document log that the region of slots has become live.
         try documentLog.append(uuid: documentUUID, documentID: documentID, slots: slots, live: true)
+        
+        try faultInjector?(.afterRecordAppend)
         
         // Update the number of slots that changed
         changesSinceLastSync += slots.count
@@ -80,9 +90,13 @@ extension DatabaseGeneration {
         // Remove the ranges from the slot map so they will be ignored in any searches.
         try slotMap.tombstone(range: range)
         
+        try faultInjector?(.afterMapTombstone)
+        
         // Append a log to the document log that marks the document as no longer live.
         _ = try documentLog.append(uuid:documentUUID, documentID: UInt64(documentID), slots: range, live: false)
         
+        try faultInjector?(.afterDeadRecordAppend)
+
         // Update the number of slots that changed
         changesSinceLastSync += range.count
         
@@ -170,8 +184,12 @@ extension DatabaseGeneration {
         try slotMap.synchronizeFile()
         try documentLog.synchronizeFile()
 
+        try faultInjector?(.beforeSlotCountBump)
+        
         // Mark the changes synced as complete by writing the header and updating the durable tracker.
         try slotMap.commit()
+        
+        try faultInjector?(.afterSlotCountBump)
         
         changesSinceLastSync = 0
     }
@@ -183,9 +201,13 @@ extension DatabaseGeneration {
         try slotMap.fullSynchronizeFile()
         try documentLog.fullSynchronizeFile()
 
+        try faultInjector?(.beforeSlotCountBump)
+
         // Mark the changes synced as complete by writing the header and updating the durable tracker.
         try slotMap.commit()
         
+        try faultInjector?(.afterSlotCountBump)
+
         changesSinceLastSync = 0
     }
 }

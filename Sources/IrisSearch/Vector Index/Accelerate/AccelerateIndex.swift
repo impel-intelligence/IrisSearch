@@ -26,7 +26,11 @@ final class AccelerateIndex: VectorIndex {
     var needsCompaction: Bool { generation.slotMap.deadFraction > SlotMap.acceptableDeadFraction }
     
     var needsRepair: Bool { generation.needsRepair }
-        
+    
+    var faultInjector: FaultInjector? {
+        didSet { generation.faultInjector = faultInjector }
+    }
+    
     init(indexLocation: URL, embeddingProvider: any IrisCommon.EmbeddingProvider) throws {
         self.indexLocation = indexLocation
         self.embeddingProvider = embeddingProvider
@@ -67,7 +71,7 @@ final class AccelerateIndex: VectorIndex {
         
         var recordedLiveSlots: [Bool] = [Bool](repeating: false, count: generation.slotMap.count)
         
-        for (uuid, record) in generation.documentLog.ranges {
+        for (_, record) in generation.documentLog.ranges {
             let clampedRange = record.range.clamped(to: 0..<generation.slotMap.count)
             recordedLiveSlots.replaceSubrange(clampedRange, with: repeatElement(true, count: clampedRange.count))
         }
@@ -250,7 +254,8 @@ extension AccelerateIndex {
             vectorFile: generation.vectorStore.url,
             destinationParent: indexLocation,
             generation: generation.generation + 1,
-            dimensions: generation.vectorStore.dimensions
+            dimensions: generation.vectorStore.dimensions,
+            faultInjector: faultInjector
         )
         
         // Run the compaction on a background thread, during this the database can be mutated. Reconciling these mutations is handled in the reconcile function.
@@ -262,19 +267,28 @@ extension AccelerateIndex {
         
         // Swap out the older generation with the new one
         let next = try DatabaseGeneration.load(generation: newGenerationNumber, in: indexLocation)
+        next.faultInjector = faultInjector
         
         // Reconcile any changes that occurred on the current generation with
         try reconcile(current: generation, with: next, using: plan)
         
         // Synchronize any updates to the next generation with the file system.
         try next.synchronize()
+        
+        try faultInjector?(.beforeCurrentRename)
+        
         try DatabaseGeneration.writeCurrentDatabasePointer(for: next.generation, in: indexLocation)
+        
+        try faultInjector?(.afterCurrentRename)
         
         // Before the swap, make sure that the directory is synced to disk. If it isn't its not that big of deal we still want to update the in-memory swap.
         try? FileDurability.syncDirectory(indexLocation)
-        
+                
         let previous = generation.generation
         generation = next
+        
+        try faultInjector?(.compactionBeforeDeleteGeneration)
+
         try DatabaseGeneration.delete(generation: previous, in: indexLocation)
     }
 

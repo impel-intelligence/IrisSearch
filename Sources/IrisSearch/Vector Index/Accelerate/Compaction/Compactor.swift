@@ -20,13 +20,17 @@ struct Compactor: Sendable {
     let destinationParent: URL
     let generation: UInt64
     let dimensions: Int
+    var faultInjector: FaultInjector? = nil
     
     func run() throws -> DatabaseGeneration {
         // If the plan is empty everything was deleted, so just set the new slots to 0
         let newMaximumSlots = plan.moves.map( { $0.newRange.upperBound }).max() ?? 0
         
         let newGeneration = try DatabaseGeneration.new(at: destinationParent, generation: generation, dimensions: UInt64(dimensions))
+        
         try newGeneration.vectorStore.reserve(upTo: newMaximumSlots)
+        
+        try faultInjector?(.compactorAfterReserve)
         
         let vectorSource = try Data(contentsOf: vectorFile, options: .alwaysMapped)
         
@@ -38,10 +42,12 @@ struct Compactor: Sendable {
             for move in plan.moves {
                 let ids = Array(slots[move.sourceRange])
                 let newRange = try newGeneration.slotMap.append(contentsOf: ids)
+                try faultInjector?(.compactorAfterMapWrite)
 
                 // If the range is empty there are no vectors to move, but the document still needs to be marked as live so add an entry into the document log.
                 guard !newRange.isEmpty else {
                     try newGeneration.documentLog.append(uuid: move.uuid, documentID: move.documentID, slots: move.newRange, live: true)
+                    try faultInjector?(.compactorAfterRecordAppend)
                     continue
                 }
                 
@@ -52,7 +58,11 @@ struct Compactor: Sendable {
                 
                 try newGeneration.vectorStore.write(rawVectors: Data(vectorDataBlock), at: newRange.lowerBound)
                 
+                try faultInjector?(.compactorAfterVectorWrite)
+                
                 try newGeneration.documentLog.append(uuid: move.uuid, documentID: move.documentID, slots: newRange, live: true)
+                
+                try faultInjector?(.compactorAfterRecordAppend)
             }
         }
         
