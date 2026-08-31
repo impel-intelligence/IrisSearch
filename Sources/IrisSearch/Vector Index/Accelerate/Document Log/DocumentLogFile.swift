@@ -26,7 +26,10 @@ final class DocumentLogFile {
     /// file's end. Leaving 30 stray bytes there would put every later record off the 64-byte stride
     /// the loader walks, turning one torn write into a log that decodes as garbage from that point on.
     private(set) var hasTornRecord: Bool = false
-
+    
+    /// How many records are in the document log
+    private(set) var recordCount: Int
+    
     public init(url: URL, maximumSlotCount: Int) throws {
         self.url = url
         let data = try Data.init(contentsOf: url)
@@ -44,6 +47,8 @@ final class DocumentLogFile {
             hasTornRecord = true
             try file.scale(to: UInt64(wholeRecordEnd))
         }
+        
+        recordCount = (wholeRecordEnd - DocumentLog.Offset.records) / DocumentLog.Record.byteCount
     }
     
     public static func new(at url: URL, maximumSlotCount: Int, generation: UInt64 = 0) throws -> DocumentLogFile {
@@ -73,9 +78,12 @@ extension DocumentLogFile {
                                         endSlot: UInt64(slots.upperBound),
                                         sequence: log.nextSequence,
                                         flags: live ? [.live] : .empty)
-
-        try file.append(data: Data(record.encoded()))
+        
+        let offset = DocumentLog.Offset.records + recordCount * DocumentLog.Record.byteCount
+        try file.write(data: Data(record.encoded()), at: UInt64(offset))
         log.apply(record: record)
+        recordCount += 1
+
         return record
     }
     
