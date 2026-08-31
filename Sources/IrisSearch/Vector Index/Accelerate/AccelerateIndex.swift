@@ -76,13 +76,34 @@ final class AccelerateIndex: VectorIndex {
         }
         
         let inIndex = Set(generation.documentLog.ranges.keys)
-        let needsReindex = inDB.subtracting(inIndex)
+        var needsReindex = inDB.subtracting(inIndex)
         
-        // Loop over all of the variables only in the index, not in the DB.
+        // Loop over all of the documents only in the index, not in the DB.
         for uuid in inIndex.subtracting(inDB) {
             guard let documentRange = generation.documentLog.ranges[uuid] else { continue }
             try generation.slotMap.tombstone(range: documentRange.range)
             try generation.documentLog.append(uuid: uuid, documentID: documentRange.id, slots: documentRange.range, live: false)
+        }
+        
+        // A document can be live in the log while every slot it names is dead. `delete` tombstones
+        // the slots first and appends the `live: false` record second, so a crash between the two
+        // leaves exactly this. Tombstoning is an in-place write, so the slot map's length never
+        // moves and `hasUncommittedTail` cannot see it — the coverage check is what notices, and
+        // without this pass nothing would ever settle it.
+        //
+        // Snapshot first: `append` mutates the fold underneath the iteration.
+        for (uuid, record) in generation.documentLog.ranges {
+            // An empty range is an image-only document, which owns no vectors by design. Treating "no live slots" as damage there would mark it dead and re-index it on every open.
+            guard !record.range.isEmpty else { continue }
+            guard record.range.allSatisfy({ !generation.slotMap.isLive($0) }) else { continue }
+            
+            Log.logger.info("Document \(uuid) is live with no live slots, marking it for re-indexing.")
+            
+            // The slots are already tombstoned; only the record needs finishing.
+            try generation.documentLog.append(uuid: uuid, documentID: record.id, slots: record.range, live: false)
+            
+            // The row is still in SQLite — pass 1 removed everything that was not — so the vectors can be rebuilt from it.
+            needsReindex.insert(uuid)
         }
         
         var recordedLiveSlots: [Bool] = [Bool](repeating: false, count: generation.slotMap.count)

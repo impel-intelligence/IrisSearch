@@ -144,13 +144,15 @@ struct RepairDatabaseTests {
                                   databaseName: directories.databaseName,
                                   textEmbedder: embedder)
 
-        // Precondition: the document is unreachable before repair. It surfaces as a thrown
-        // `rangeDoesNotExist` rather than an empty result — see
-        // `testAScopedSearchForAnUnindexedDocumentThrows` below.
-        await #expect(throws: DocumentMapError.rangeDoesNotExist(uuid: document.uuid)) {
-            _ = try await reopened.search(within: document.uuid,
-                                          query: .init(text: "migrating herons in winter"))
-        }
+        // Precondition, asserted against the index rather than through `search(within:)`: that
+        // search fuses semantic and syntactic hits, and FTS still has the text in SQLite, so it
+        // finds the piece with or without vectors. Only the index knows the vectors are gone.
+        #expect(await reopened.requiresRepair == false,
+                "An emptied index is not damaged — it simply has nothing, which is what repair fixes.")
+        let indexURL = directories.textIndexURL
+        let before = try DatabaseGeneration.load(generation: 0, in: indexURL)
+        #expect(before.documentLog.ranges[document.uuid] == nil,
+                "Precondition: the index holds no range for this document.")
 
         try await reopened.repairDatabase()
 
@@ -272,13 +274,10 @@ struct RepairDatabaseTests {
         #expect(!stillThere.importantPieces.isEmpty, "The unrelated document must be untouched.")
     }
 
-    /// Filed on the PR as finding #8 and still open: `AccelerateIndex.search(query:kItems:collection:)`
-    /// lets `DocumentMapError.rangeDoesNotExist` escape instead of returning no results.
-    ///
-    /// Every document `repairDatabase` is about to recover is in exactly this state, so a caller
-    /// that searches during recovery gets a hard error rather than an empty page. When #8 is fixed,
-    /// this test should flip to asserting an empty result.
-    @Test func testAScopedSearchForAnUnindexedDocumentThrows() async throws {
+    /// Every document `repairDatabase` is about to recover is in this state, so a caller that
+    /// searches during recovery must get an empty page rather than a hard error. This was finding #8
+    /// on the PR, where `rangeDoesNotExist` escaped instead.
+    @Test func testAScopedSearchForAnUnindexedDocumentReturnsNothing() async throws {
         let directories = TestingDirectories()
         let database = try IrisDB(databaseLocation: directories.baseURL,
                                   databaseName: directories.databaseName,
@@ -293,8 +292,9 @@ struct RepairDatabaseTests {
                                   databaseName: directories.databaseName,
                                   textEmbedder: CountingEmbedder())
 
-        await #expect(throws: DocumentMapError.rangeDoesNotExist(uuid: document.uuid)) {
-            _ = try await reopened.search(within: document.uuid, query: .init(text: "indexed once"))
-        }
+        // The assertion is that this returns at all. Before the fix it threw `rangeDoesNotExist`,
+        // which turned every search during recovery into a hard error. Syntactic hits still come
+        // back from FTS, so the result is not expected to be empty — only non-throwing.
+        _ = try await reopened.search(within: document.uuid, query: .init(text: "indexed once"))
     }
 }

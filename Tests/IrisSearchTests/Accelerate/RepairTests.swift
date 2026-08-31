@@ -256,13 +256,16 @@ struct RepairTests {
     }
 
     @Test func testAnUncommittedAppendIsReportedForReindexing() throws {
-        // Below the 32-slot sync threshold nothing commits, so an index dropped without `close`
-        // loses the append entirely. The row is still in SQLite, so repair must ask for it back.
+        // Under the bulk policy nothing commits until the threshold, so an index dropped without
+        // `close` loses the append entirely. The row is still in SQLite, so repair must ask for it back.
         let dir = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let document = Self.document(id: 1, title: "uncommitted", pieceIDs: [100, 101])
+        // `.interactive` commits every mutation, so an uncommitted tail only exists under the bulk
+        // policy an import runs with. That is the window a crash can lose.
         let abandoned = try Self.makeIndex(at: dir)
+        abandoned.beginBulkOperations()
         try abandoned.addDocument(document: document)
         // Deliberately no close() — this is the crash.
 
@@ -281,6 +284,7 @@ struct RepairTests {
 
         let document = Self.document(id: 1, title: "uncommitted", pieceIDs: [100, 101])
         let abandoned = try Self.makeIndex(at: dir)
+        abandoned.beginBulkOperations()
         try abandoned.addDocument(document: document)
 
         let pool = try Self.makeDatabase(at: dir, containing: [document])
@@ -299,6 +303,7 @@ struct RepairTests {
 
         let document = Self.document(id: 1, title: "uncommitted", pieceIDs: [100, 101])
         let abandoned = try Self.makeIndex(at: dir)
+        abandoned.beginBulkOperations()
         try abandoned.addDocument(document: document)
 
         let pool = try Self.makeDatabase(at: dir, containing: [document])
@@ -315,6 +320,7 @@ struct RepairTests {
 
         let document = Self.document(id: 1, title: "uncommitted", pieceIDs: [100, 101])
         let abandoned = try Self.makeIndex(at: dir)
+        abandoned.beginBulkOperations()
         try abandoned.addDocument(document: document)
 
         let slotURL = dir.appending(path: "gen-0").appending(path: "slot.bin")
@@ -353,6 +359,59 @@ struct RepairTests {
         #expect(generation.documentLog.coveredSlotCount == 4)
         #expect(generation.slotMap.count - generation.slotMap.deadCount == 2)
         #expect(generation.needsRepair, "Coverage is the only term that can catch this.")
+    }
+
+    @Test func testACrashPartWayThroughADeleteIsRepaired() throws {
+        // Detecting this is not enough: if repair cannot settle it, `needsRepair` stays true on
+        // every subsequent open and the index never reports healthy again.
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let documents = try Self.buildIndex(at: dir, documentCount: 2)
+
+        let interrupted = try Self.makeIndex(at: dir)
+        try interrupted.removeDocument(documentUUID: documents[1].uuid, documentID: 2, pieceIDs: [])
+        try interrupted.close()
+        try Self.truncateDocumentLog(in: dir, keepingRecords: 2)
+
+        // The row is still in SQLite, so the document is recoverable by re-embedding.
+        let pool = try Self.makeDatabase(at: dir, containing: documents)
+
+        let index = try Self.makeIndex(at: dir)
+        #expect(index.needsRepair)
+
+        let needsReindex = try index.repair(using: pool)
+        try index.close()
+
+        #expect(needsReindex == [documents[1].uuid],
+                "The document has no live vectors left, so it has to be rebuilt.")
+        #expect(!(try Self.makeIndex(at: dir).needsRepair),
+                "Repair has to settle it, not just report it.")
+    }
+
+    @Test func testAnImageOnlyDocumentIsNotMistakenForDamage() throws {
+        // An image-only document owns an empty range and therefore has no live slots. That is not
+        // the same state as a half-finished delete, and treating it as damage would mark it dead
+        // and re-index it on every single open.
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        var imageOnly = IrisDocument(uuid: UUID(), title: "image-only", description: "d", pieces: [])
+        imageOnly.id = 1
+
+        let index = try Self.makeIndex(at: dir)
+        try index.addDocument(document: imageOnly)
+        try index.close()
+
+        let pool = try Self.makeDatabase(at: dir, containing: [imageOnly])
+        let reopened = try Self.makeIndex(at: dir)
+
+        #expect(try reopened.repair(using: pool).isEmpty)
+        #expect(reopened.needsRepair == false)
+
+        // And still not on the second open, which is where a churn loop would show itself.
+        let again = try Self.makeIndex(at: dir)
+        #expect(try again.repair(using: pool).isEmpty)
     }
 
     // MARK: - Torn trailing record
