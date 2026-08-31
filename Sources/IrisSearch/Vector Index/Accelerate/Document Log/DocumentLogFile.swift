@@ -38,8 +38,7 @@ final class DocumentLogFile {
         // keeps one entry per surviving document. Truncating to the latter would delete every
         // record that a delete or an update superseded.
         let recordBytes = data.count - DocumentLog.Offset.records
-        let wholeRecordEnd = DocumentLog.Offset.records
-            + ((recordBytes / DocumentLog.Record.byteCount) * DocumentLog.Record.byteCount)
+        let wholeRecordEnd = DocumentLog.Offset.records + ((recordBytes / DocumentLog.Record.byteCount) * DocumentLog.Record.byteCount)
 
         if recordBytes % DocumentLog.Record.byteCount != 0 {
             hasTornRecord = true

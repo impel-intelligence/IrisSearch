@@ -47,10 +47,27 @@ final class AccelerateIndex: VectorIndex {
         guard generation.vectorStore.dimensions == embeddingProvider.dimension else {
             throw AccelerateIndexError.mismatchedDimensions(found: generation.vectorStore.dimensions, expected: embeddingProvider.dimension)
         }
+        
+        try pruneGenerations(except: generation.generation)
     }
     
     func close() throws {
         try generation.fullSynchronize()
+    }
+    
+    func pruneGenerations(except generation: UInt64) throws {
+        let files = try FileManager.default.contentsOfDirectory(at: indexLocation, includingPropertiesForKeys: nil)
+        let generations = files.filter({ $0.lastPathComponent.contains("gen-") }).compactMap { url in
+            return UInt64(url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "gen-", with: ""))
+        }
+        
+        for gen in generations where gen != generation {
+            do {
+                try DatabaseGeneration.delete(generation: gen, in: indexLocation)
+            } catch {
+                Log.logger.warning("Failed to delete generation (\(gen))", error: error)
+            }
+        }
     }
     
     func repair(using database: DatabasePool) throws -> [UUID] {
@@ -276,15 +293,15 @@ extension AccelerateIndex {
         
         try faultInjector?(.beforeCurrentRename)
         
+        let previous = generation.generation
+        generation = next
+
         try DatabaseGeneration.writeCurrentDatabasePointer(for: next.generation, in: indexLocation)
         
         try faultInjector?(.afterCurrentRename)
         
         // Before the swap, make sure that the directory is synced to disk. If it isn't its not that big of deal we still want to update the in-memory swap.
         try? FileDurability.syncDirectory(indexLocation)
-                
-        let previous = generation.generation
-        generation = next
         
         try faultInjector?(.compactionBeforeDeleteGeneration)
 
