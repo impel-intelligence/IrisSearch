@@ -14,6 +14,9 @@ public protocol VectorIndex {
     
     init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws
     
+    func beginBulkOperations()
+    func endBulkOperations() throws
+
     func close() throws
     func repair(using pool: DatabasePool) throws -> [UUID]
     

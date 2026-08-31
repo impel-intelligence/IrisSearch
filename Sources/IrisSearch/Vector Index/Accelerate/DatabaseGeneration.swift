@@ -14,6 +14,13 @@ enum DatabaseGenerationError: Error, Equatable {
 }
 
 final class DatabaseGeneration {
+    enum SyncMode {
+        /// The database is synced after every change.
+        case interactive
+        /// The database is synced every ``DatabaseGeneration/syncThreshold``
+        case bulk
+    }
+    
     public var generation: UInt64
     public var vectorStore: VectorStoreFile
     public var slotMap: SlotMapFile
@@ -27,7 +34,10 @@ final class DatabaseGeneration {
     private var url: URL
     
     var faultInjector: FaultInjector?
-        
+    
+    /// Determines how the database should sync to disk.
+    var syncMode: SyncMode = .interactive
+
     var needsRepair: Bool {
         slotMap.hasUncommittedTail ||
         documentLog.hasTornRecord ||
@@ -76,8 +86,13 @@ extension DatabaseGeneration {
         changesSinceLastSync += slots.count
         
         // Check to see if we need to synchronize
-        if changesSinceLastSync >= Self.syncThreshold {
+        switch syncMode {
+        case .interactive:
             try synchronize()
+        case .bulk:
+            if changesSinceLastSync >= Self.syncThreshold {
+                try synchronize()
+            }
         }
         
         return slots
@@ -101,8 +116,13 @@ extension DatabaseGeneration {
         changesSinceLastSync += range.count
         
         // Check to see if we need to synchronize
-        if changesSinceLastSync >= Self.syncThreshold {
+        switch syncMode {
+        case .interactive:
             try synchronize()
+        case .bulk:
+            if changesSinceLastSync >= Self.syncThreshold {
+                try synchronize()
+            }
         }
     }
 }

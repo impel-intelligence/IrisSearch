@@ -50,6 +50,8 @@ final class FaissIndex: VectorIndex {
     
     func close() throws { }
     func repair(using database: DatabasePool) -> [UUID] { [] }
+    func beginBulkOperations() { }
+    func endBulkOperations() throws { }
     
     private func initializeDB() throws {
         if !FileManager.default.fileExists(atPath: indexLocation.path(percentEncoded: false)) {

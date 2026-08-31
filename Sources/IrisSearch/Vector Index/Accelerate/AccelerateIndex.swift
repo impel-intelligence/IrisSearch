@@ -121,6 +121,15 @@ final class AccelerateIndex: VectorIndex {
 
 // MARK: Document Management
 extension AccelerateIndex {
+    func beginBulkOperations() {
+        generation.syncMode = .bulk
+    }
+    
+    func endBulkOperations() throws {
+        generation.syncMode = .interactive
+        try generation.synchronize()
+    }
+    
     func addDocument(document: IrisDocument) throws {
         var embeddings: [[Float]] = []
         var ids: [UInt64] = []

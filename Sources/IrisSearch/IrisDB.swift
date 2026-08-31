@@ -197,6 +197,18 @@ public actor IrisDB {
 // MARK: CRUD
 // Read operations
 extension IrisDB {
+    public func bulkOperation<T>(block: () async throws -> T) async throws -> T {
+        textIndex.beginBulkOperations()
+        do {
+            let result = try await block()
+            try textIndex.endBulkOperations()
+            return result
+        } catch {
+            try? textIndex.endBulkOperations()
+            throw error
+        }
+    }
+    
     public func readPiece(uuid: UUID, pieceSequence: Int) async throws -> DocumentPiece? {
         return try await dbPool.read { db in
             guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
