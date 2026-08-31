@@ -155,7 +155,8 @@ public actor IrisDB {
     
     private static func needsAccelerateMigration(indexURL: URL) throws -> Bool {
         let databaseContents = try FileManager.default.contentsOfDirectory(at: indexURL, includingPropertiesForKeys: nil)
-        return databaseContents.contains(where: { $0.pathExtension == "index"} )
+        // If there are any index files or a backup exists that has not been deleted.
+        return databaseContents.contains(where: { $0.pathExtension == "index" || $0.lastPathComponent == "backup" } )
     }
     
     private static func backupFaissIndex(in indexURL: URL) throws {
