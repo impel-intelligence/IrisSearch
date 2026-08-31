@@ -3,6 +3,7 @@
 //  IrisSearch
 //
 //  Created by Taylor Lineman on 6/8/26.
+//  Edited by Claude Opus 5 (Anthropic) on 2026-08-12 — corrected `cachedPieceCount` maintenance.
 //
 
 import Foundation
@@ -29,10 +30,11 @@ public enum IrisDBError: Error {
 /// - map.sqlite
 public actor IrisDB {
     private static let databaseExtension = "irisdb"
-    private static let indexExtension = "index"
     
     private let databaseURL: URL
-    private let textIndex: FaissIndex
+    private var textIndexURL: URL
+    
+    private let textIndex: AccelerateIndex
     private let textEmbedder: EmbeddingProvider
     
     private let dbPool: DatabasePool
@@ -40,16 +42,35 @@ public actor IrisDB {
     
     public let contextSize: Int = 512
     
+    public var requiresRepair: Bool { textIndex.needsRepair }
+    public var requiresFaissMigration: Bool = false
+    
+    /// The total number of rows in `document_pieces`, cached to keep a `SELECT COUNT(*)` off the search path.
+    ///
+    /// `nil` means "not yet known" — the next corpus-wide search recounts and refills it. Every write path
+    /// that changes the number of piece rows must apply its delta here, or the value silently drifts.
+    /// Settable only within this file so all maintenance stays next to the writes it mirrors.
+    ///
+    /// - Authored by: Claude Opus 5 (Anthropic)
+    internal private(set) var cachedPieceCount: Int?
+    
     public init(databaseLocation: URL, databaseName: String = "main", textEmbedder: EmbeddingProvider) throws {
         databaseURL = databaseLocation.appending(path: databaseName).appendingPathExtension(IrisDB.databaseExtension)
 
         self.textEmbedder = textEmbedder
         
-        if !FileManager.default.fileExists(atPath: databaseLocation.path(percentEncoded: false)) {
-            try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
-        }
+        try FileManager.default.createDirectory(at: databaseURL, withIntermediateDirectories: true)
         
-        self.textIndex = try FaissIndex(indexLocation: databaseURL.appending(path: "text-index"), embeddingProvider: textEmbedder)
+        textIndexURL = databaseURL.appending(path: "text-index")
+        
+        try FileManager.default.createDirectory(at: textIndexURL, withIntermediateDirectories: true)
+        
+        if try IrisDB.needsAccelerateMigration(indexURL: textIndexURL) {
+            requiresFaissMigration = true
+            try IrisDB.backupFaissIndex(in: textIndexURL)
+        }
+
+        self.textIndex = try AccelerateIndex.init(indexLocation: textIndexURL, embeddingProvider: textEmbedder)
 
         let sqliteURL = databaseURL.appending(path: "map").appendingPathExtension("sqlite")
 
@@ -118,11 +139,76 @@ public actor IrisDB {
         
         try migrator.migrate(dbPool)
     }
+    
+    public func migrateFromFaissIndex(progress: Progress) async throws {
+        guard requiresFaissMigration else {
+            Log.logger.warning("Called faiss migration when no migration is needed.")
+            return
+        }
+        
+        try await reEmbedEntireDatabase(progress: progress)
+        
+        let backupDirectory = textIndexURL.appending(path: "backup")
+        try? FileManager.default.removeItem(at: backupDirectory)
+        requiresFaissMigration = false
+    }
+    
+    private static func needsAccelerateMigration(indexURL: URL) throws -> Bool {
+        let databaseContents = try FileManager.default.contentsOfDirectory(at: indexURL, includingPropertiesForKeys: nil)
+        return databaseContents.contains(where: { $0.pathExtension == "index"} )
+    }
+    
+    private static func backupFaissIndex(in indexURL: URL) throws {
+        let backupDirectory = indexURL.appending(path: "backup")
+        try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+        
+        let files = try FileManager.default.contentsOfDirectory(at: indexURL, includingPropertiesForKeys: nil)
+
+        for file in files where file.lastPathComponent != "backup" {
+            try FileManager.default.moveItem(at: file, to: backupDirectory.appending(path: file.lastPathComponent))
+        }
+    }
+    
+    /// Safely closes the database and ensures changes are saved.
+    public func close() async throws {
+        try textIndex.close()
+    }
+    
+    public func repairDatabase() async throws {
+        let reEmbed = try textIndex.repair(using: self.dbPool)
+        
+        for uuid in reEmbed {
+            guard let document = try await readDocument(uuid: uuid) else {
+                Log.logger.error("Failed to get document for re-embedding: \(uuid)")
+                continue
+            }
+            
+            try await updateDocument(
+                uuid: document.uuid,
+                title: document.title,
+                description: document.description,
+                embeddableContent: document.pieces.map(\.content)
+            )
+
+        }
+    }
 }
 
 // MARK: CRUD
 // Read operations
 extension IrisDB {
+    public func bulkOperation<T>(block: () async throws -> T) async throws -> T {
+        textIndex.beginBulkOperations()
+        do {
+            let result = try await block()
+            try textIndex.endBulkOperations()
+            return result
+        } catch {
+            try? textIndex.endBulkOperations()
+            throw error
+        }
+    }
+    
     public func readPiece(uuid: UUID, pieceSequence: Int) async throws -> DocumentPiece? {
         return try await dbPool.read { db in
             guard var document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else { return nil }
@@ -298,6 +384,10 @@ extension IrisDB {
             throw error
         }
         
+        if let cachedPieceCount {
+            self.cachedPieceCount = cachedPieceCount + insertedDocument.pieces.count
+        }
+
         return insertedDocument
     }
     
@@ -374,8 +464,17 @@ extension IrisDB {
             return (newDocument, oldPieceIDs)
         }
 
-        try textIndex.removeDocument(documentID: uuid, pieceIDs: oldPieceIDs)
+        try textIndex.removeDocument(documentUUID: uuid, documentID: updatedDocument.id ?? 0, pieceIDs: oldPieceIDs)
         try textIndex.addDocument(document: updatedDocument)
+
+        // An update swaps the whole piece set, so the row count moves by the difference between the two.
+        if let cachedPieceCount {
+            self.cachedPieceCount = cachedPieceCount + updatedDocument.pieces.count - oldPieceIDs.count
+        }
+        
+        if textIndex.needsCompaction {
+            try? await textIndex.compact()
+        }
     }
     
     /// Delete a document by `uuid`.
@@ -404,14 +503,23 @@ extension IrisDB {
         // Remove the document we just deleted from the global index
         if let tmpDocument {
             let oldIDs = tmpDocument.pieces.compactMap(\.id).map({ Int($0) })
-            try textIndex.removeDocument(documentID: uuid, pieceIDs: oldIDs)
+            try textIndex.removeDocument(documentUUID: uuid, documentID: tmpDocument.id ?? 0, pieceIDs: oldIDs)
+
+            // Remove the count of document pieces from the cached amount.
+            if let cachedPieceCount {
+                self.cachedPieceCount = cachedPieceCount - tmpDocument.pieces.count
+            }
+        }
+        
+        if textIndex.needsCompaction {
+            try? await textIndex.compact()
         }
     }
 }
 
 // MARK: Re-embedding Database
 extension IrisDB {
-    public func reEmbedEntireDatabase() async throws {
+    public func reEmbedEntireDatabase(progress: Progress) async throws {
         let documents = try await dbPool.read { db in
             // Get all documents
             var documents = try IrisDocument.fetchAll(db)
@@ -423,6 +531,9 @@ extension IrisDB {
             return documents
         }
         
+        progress.totalUnitCount = Int64(documents.count)
+        progress.completedUnitCount = 0
+        
         // Go through all documents and run the update function with the same embeddable content. This will trigger re-embeds for everything.
         for document in documents {
             try await updateDocument(
@@ -431,6 +542,7 @@ extension IrisDB {
                 description: document.description,
                 embeddableContent: document.pieces.map(\.content)
             )
+            progress.completedUnitCount += 1
         }
     }
 }
@@ -440,11 +552,19 @@ extension IrisDB {
     public func search(within uuid: UUID, query: IrisQuery, semanticCutoff: Float = 0.6, nItems: Int = 10, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> SearchResult {
         guard nItems > 0 else { throw IrisDBError.nLessThanZero }
         
-        let document = try await readDocument(uuid: uuid)
-        guard let document else { throw IrisDBError.noDocuments }
+        // Read document and its number of pieces without actually populating all of the pieces.
+        // Pieces that are needed are populated later in the chain, so no need to populate them
+        // all now.
+        let (document, pieceCount) = try await dbPool.read { db -> (IrisDocument, Int) in
+            guard let document = try IrisDocument.fetchOne(db, key: ["uuid": uuid]) else {
+                throw IrisDBError.noDocuments
+            }
+            let count = try document.request(for: IrisDocument.pieces).fetchCount(db)
+            return (document, count)
+        }
                 
         // Search for twice as many items as the user requested to give better ranking down the line.
-        let searchLimit = (nItems * 2).clamped(to: 0...document.pieces.count)
+        let searchLimit = (nItems * 2).clamped(to: 0...pieceCount)
         
         let unicodeNormalizedQuery = query.text.precomposedStringWithCompatibilityMapping
         
@@ -489,12 +609,9 @@ extension IrisDB {
         
         // Save the ranking (list index) for every piece ID. Will be used for reconstructing the ranking after database fetches.
         let pieceRanksByID: [Int: Int] = Dictionary(uniqueKeysWithValues: rankedPieceIDs.enumerated().map { ($1, $0) })
-                
-        // Any pieces that were actually surfaced by the piece searching
-        let surfacedPieceIDs = Set(semanticTextPieces.map(\.id) + syntacticTextDocumentPieces.map { Int($0.id) })
-        
+                        
         // Take the top n ranked pieces.
-        let limitedPieceIDs = Array(surfacedPieceIDs.prefix(nItems))
+        let limitedPieceIDs = Array(rankedPieceIDs.prefix(nItems))
         
         let searchedPieces = try await dbPool.read { db in
             return try DocumentPiece.filter(limitedPieceIDs.contains(Column("id"))).fetchAll(db)
@@ -538,8 +655,14 @@ extension IrisDB {
     public func search(query: IrisQuery, nItems: Int = 10, semanticCutoff: Float = 0.6, ranking: FusionAlgorithm = .reciprocalRankedFusion) async throws -> [SearchResult] {
         guard nItems > 0 else { throw IrisDBError.nLessThanZero }
         
-        let maximumPieces = try await dbPool.read { db in
-            return try DocumentPiece.fetchCount(db)
+        var maximumPieces: Int
+        if let cachedPieceCount {
+            maximumPieces = cachedPieceCount
+        } else {
+            maximumPieces = try await dbPool.read { db in
+                return try DocumentPiece.fetchCount(db)
+            }
+            cachedPieceCount = maximumPieces
         }
         
         guard maximumPieces > 0 else { throw IrisDBError.noDocuments }
@@ -560,7 +683,6 @@ extension IrisDB {
                 .filter(semanticTextPieces.map(\.id).contains(Column("id")))
                 .fetchAll(db)
         }
-        
 
         // Document Piece Database Search
         let syntacticTextDocumentPieces: [SearchableDocumentPiece] = (try await dbPool.read { db in

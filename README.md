@@ -5,8 +5,8 @@ Iris Search is a hybrid RAG system, that allows you to intake any form of conten
 - Natural Language Search (Vector Search)
 - Direct text search (FTS5 Text Search)
 - The entire database is a single macOS package with the extension: `irisdb`
-  - Easily transferrable between computers, just drag and drop a single file.
 
+  - Easily transferrable between computers, just drag and drop a single file.
 ### Supported Formats
 - PDF
 - TXT (Generic for all plaintext formats)
@@ -16,6 +16,9 @@ Iris Search is a hybrid RAG system, that allows you to intake any form of conten
 
 ### Supported Languages
 - English
+
+### Todo
+- Write lock on Accelerate Index
 
 ## Installation
 ### Swift Package Manage

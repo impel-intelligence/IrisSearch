@@ -9,8 +9,9 @@ import Foundation
 import SwiftFaiss
 import SwiftFaissC
 import IrisCommon
+import GRDB
 
-final class FaissIndex {
+final class FaissIndex: VectorIndex {
     private static let indexExtension = "index"
     
     enum IndexLocation {
@@ -39,11 +40,18 @@ final class FaissIndex {
     
     var cachedDocumentIndices: [UUID: IDMap] = [:]
     
+    var needsRepair: Bool = false
+    
     init(indexLocation: URL, embeddingProvider: EmbeddingProvider) throws {
         self.indexLocation = indexLocation
         self.embeddingProvider = embeddingProvider
         try initializeDB()
     }
+    
+    func close() throws { }
+    func repair(using database: DatabasePool) -> [UUID] { [] }
+    func beginBulkOperations() { }
+    func endBulkOperations() throws { }
     
     private func initializeDB() throws {
         if !FileManager.default.fileExists(atPath: indexLocation.path(percentEncoded: false)) {
@@ -56,13 +64,13 @@ final class FaissIndex {
         try addDocumentToGlobalIndex(document: document)
     }
     
-    public func removeDocument(documentID: UUID, pieceIDs: [Int]) throws {
-        let indexURL = IndexLocation.document(uuid: documentID).filePath(in: indexLocation)
+    public func removeDocument(documentUUID: UUID, documentID: Int64, pieceIDs: [Int]) throws {
+        let indexURL = IndexLocation.document(uuid: documentUUID).filePath(in: indexLocation)
         try FileManager.default.removeItem(at: indexURL)
         
         try removeDocumentFromGlobalIndex(ids: pieceIDs)
         // Remove the cached index for the document.
-        cachedDocumentIndices.removeValue(forKey: documentID)
+        cachedDocumentIndices.removeValue(forKey: documentUUID)
     }
 }
 
